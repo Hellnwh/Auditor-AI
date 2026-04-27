@@ -1,0 +1,68 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id        String    @id @default(cuid())
+  email     String    @unique
+  password  String
+  name      String
+  plan      String    @default("FREE") // FREE, PRO, ENTERPRISE
+  scansLeft Int       @default(10)
+  expenses  Expense[]
+  reports   Report[]
+  createdAt DateTime  @default(now())
+}
+
+model Feedback {
+  id        String   @id @default(cuid())
+  rating    Int
+  content   String
+  userId    String?
+  source    String?  // Where the feedback came from
+  createdAt DateTime @default(now())
+}
+
+model Report {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  status      String   @default("Draft") // Draft, Submitted, Reimbursed
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expenses    Expense[]
+  createdAt   DateTime @default(now())
+}
+
+model Expense {
+  id            String   @id @default(cuid())
+  amount        Float
+  subtotal      Float?
+  taxAmount     Float?
+  currency      String?
+  date          String
+  vendor        String
+  category      String?
+  paymentMethod String?
+  lineItems     String?  // Stores stringified JSON array
+  rawText       String
+  confidence    Float?
+  documentType  String?
+  vendorAddress String?
+  dueDate       String?
+  invoiceNumber String?
+  discount      Float?
+  userRating    Int?     // 1 to 5 rating
+  userFeedback  String?  // Optional text feedback / corrections
+  userId        String?
+  user          User?    @relation(fields: [userId], references: [id])
+  reportId      String?
+  report        Report?  @relation(fields: [reportId], references: [id])
+  createdAt     DateTime @default(now())
+}
+

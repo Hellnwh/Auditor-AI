@@ -1,0 +1,163 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- PRIMITIVE HELPERS ---
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(uid) { return isSignedIn() && request.auth.uid == uid; }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    
+    // --- VALIDATION BLUEPRINTS ---
+    
+    function isValidUser(data) {
+      return data.keys().hasAll(['name', 'email', 'plan', 'scansLeft', 'createdAt']) 
+        && data.keys().size() >= 5
+        && data.keys().size() <= 9
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.email is string && data.email.size() > 0 && data.email.size() <= 150
+        && data.plan in ['FREE', 'PRO', 'ENTERPRISE']
+        && data.scansLeft is int && data.scansLeft >= 0
+        && data.createdAt == request.time
+        && (!('companyName' in data) || data.companyName == null || (data.companyName is string && data.companyName.size() <= 100))
+        && (!('jobTitle' in data) || data.jobTitle == null || (data.jobTitle is string && data.jobTitle.size() <= 100))
+        && (!('phoneNumber' in data) || data.phoneNumber == null || (data.phoneNumber is string && data.phoneNumber.size() <= 20))
+        && (!('picture' in data) || data.picture == null || (data.picture is string && data.picture.size() <= 500));
+    }
+
+    function isValidExpense(data) {
+      return data.keys().hasAll(['amount', 'date', 'vendor', 'createdAt'])
+        && data.amount is number && data.amount >= -1000000 && data.amount <= 1000000
+        && data.date is string && data.date.size() > 0 && data.date.size() <= 100
+        && data.vendor is string && data.vendor.size() > 0 && data.vendor.size() <= 500
+        && data.createdAt is timestamp
+        // Optional Fields
+        && (!('subtotal' in data) || data.subtotal == null || data.subtotal is number)
+        && (!('taxAmount' in data) || data.taxAmount == null || data.taxAmount is number)
+        && (!('category' in data) || data.category == null || data.category is string)
+        && (!('paymentMethod' in data) || data.paymentMethod == null || data.paymentMethod is string)
+        && (!('documentType' in data) || data.documentType == null || data.documentType is string)
+        && (!('vendorAddress' in data) || data.vendorAddress == null || data.vendorAddress is string)
+        && (!('dueDate' in data) || data.dueDate == null || data.dueDate is string)
+        && (!('invoiceNumber' in data) || data.invoiceNumber == null || data.invoiceNumber is string)
+        && (!('discount' in data) || data.discount == null || data.discount is number)
+        && (!('lineItems' in data) || data.lineItems == null || data.lineItems is string)
+        && (!('rawText' in data) || data.rawText == null || data.rawText is string)
+        && (!('confidence' in data) || data.confidence == null || (data.confidence is number && data.confidence >= 0 && data.confidence <= 100))
+        && (!('userRating' in data) || data.userRating == null || (data.userRating is int && data.userRating >= 0 && data.userRating <= 5))
+        && (!('userFeedback' in data) || data.userFeedback == null || data.userFeedback is string)
+        && (!('reportId' in data) || data.reportId == null || data.reportId is string)
+        && (!('discrepancy' in data) || data.discrepancy == null || data.discrepancy in ['yes', 'no'])
+        && (!('discrepancyReason' in data) || data.discrepancyReason == null || data.discrepancyReason is string);
+    }
+
+    function isValidReport(data) {
+      return data.keys().hasAll(['title', 'status', 'createdAt'])
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 200
+        && data.status in ['Draft', 'Submitted', 'Reimbursed']
+        && data.createdAt is timestamp;
+    }
+
+    function isValidFeedback(data) {
+      return data.keys().hasAll(['rating', 'content', 'createdAt'])
+        && data.keys().size() >= 3 && data.keys().size() <= 5
+        && data.rating is int && data.rating >= 1 && data.rating <= 5
+        && data.content is string && data.content.size() > 0 && data.content.size() <= 2000
+        && data.createdAt == request.time;
+    }
+
+    // --- RULES ---
+
+    // USERS: Profile governance
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      // Allow user to create their own record securely enforcing free tier
+      allow create: if isOwner(userId)
+        && isValidUser(incoming())
+        && incoming().plan == 'FREE'
+        && incoming().scansLeft == 10;
+      allow update: if isOwner(userId) 
+        && incoming().plan == existing().plan 
+        && incoming().createdAt == existing().createdAt
+        && (
+          incoming().scansLeft == existing().scansLeft ||
+          (incoming().scansLeft == existing().scansLeft - 1 && incoming().scansLeft >= 0)
+        )
+        && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'email', 'companyName', 'jobTitle', 'phoneNumber', 'picture', 'scansLeft'])
+        );
+      allow delete: if isOwner(userId);
+    }
+
+    // EXPENSES: Personal financial data
+    match /users/{userId}/expenses/{expenseId} {
+      allow list: if isOwner(userId);
+      allow get: if isOwner(userId) && isValidId(expenseId);
+      
+      allow create: if isOwner(userId) 
+        && isValidId(expenseId)
+        && isValidExpense(incoming())
+        && incoming().createdAt == request.time;
+
+      allow update: if isOwner(userId)
+        && isValidId(expenseId)
+        && isValidExpense(incoming())
+        && incoming().createdAt == existing().createdAt
+        && (
+          // Standard Update: Any field except createdAt
+          !existing().keys().hasAll(['reportId']) || 
+          // Relational Lock: If linked to a report, check if report is reimbursed
+          get(/databases/$(database)/documents/users/$(userId)/reports/$(existing().reportId)).data.status != 'Reimbursed'
+        );
+
+      allow delete: if isOwner(userId)
+        && (!existing().keys().hasAll(['reportId']) || 
+           get(/databases/$(database)/documents/users/$(userId)/reports/$(existing().reportId)).data.status != 'Reimbursed');
+    }
+
+    // REPORTS: Consolidated archives
+    match /users/{userId}/reports/{reportId} {
+      allow list: if isOwner(userId);
+      allow get: if isOwner(userId) && isValidId(reportId);
+
+      allow create: if isOwner(userId)
+        && isValidId(reportId)
+        && isValidReport(incoming())
+        && incoming().createdAt == request.time;
+
+      allow update: if isOwner(userId)
+        && isValidId(reportId)
+        && isValidReport(incoming())
+        && incoming().createdAt == existing().createdAt
+        && (
+          // Logic: Cannot degrade status from Reimbursed
+          existing().status != 'Reimbursed' &&
+          (
+            // Action: Update Title/Desc
+            incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description']) ||
+            // Action: Submit
+            (existing().status == 'Draft' && incoming().status == 'Submitted' && incoming().diff(existing()).affectedKeys().hasOnly(['status'])) ||
+            // Action: Reimburse
+            (existing().status == 'Submitted' && incoming().status == 'Reimbursed' && incoming().diff(existing()).affectedKeys().hasOnly(['status']))
+          )
+        );
+
+      allow delete: if isOwner(userId) && existing().status != 'Reimbursed';
+    }
+
+    // FEEDBACK: Public submission
+    match /feedback/{feedbackId} {
+      allow create: if isSignedIn() 
+        && isValidId(feedbackId)
+        && isValidFeedback(incoming())
+        && (incoming().userId == request.auth.uid || !('userId' in incoming()));
+      
+      // Feedback is read-only for admins (not defined here for brevity) or not at all on client
+    }
+  }
+}

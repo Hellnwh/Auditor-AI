@@ -1,0 +1,90 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User account details and usage quotas.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "plan": { "type": "string", "enum": ["FREE", "PRO", "ENTERPRISE"] },
+        "scansLeft": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "email", "plan", "scansLeft", "createdAt"]
+    },
+    "Expense": {
+      "title": "Financial Record",
+      "description": "AI-extracted expense entry.",
+      "type": "object",
+      "properties": {
+        "amount": { "type": "number" },
+        "subtotal": { "type": "number" },
+        "taxAmount": { "type": "number" },
+        "currency": { "type": "string" },
+        "date": { "type": "string" },
+        "vendor": { "type": "string" },
+        "category": { "type": "string" },
+        "paymentMethod": { "type": "string" },
+        "lineItems": { "type": "string" },
+        "discrepancy": { "type": "string" },
+        "discrepancyReason": { "type": "string" },
+        "rawText": { "type": "string" },
+        "confidence": { "type": "number" },
+        "documentType": { "type": "string" },
+        "vendorAddress": { "type": "string" },
+        "dueDate": { "type": "string" },
+        "invoiceNumber": { "type": "string" },
+        "discount": { "type": "number" },
+        "userRating": { "type": "integer" },
+        "userFeedback": { "type": "string" },
+        "reportId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["amount", "date", "vendor", "createdAt"]
+    },
+    "Report": {
+      "title": "Ledger Archive",
+      "description": "Collection of consolidated expense records.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["Draft", "Submitted", "Reimbursed"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "status", "createdAt"]
+    },
+    "Feedback": {
+      "title": "Platform Feedback",
+      "description": "User ratings and textual feedback for the platform.",
+      "type": "object",
+      "properties": {
+        "rating": { "type": "integer" },
+        "content": { "type": "string" },
+        "userId": { "type": "string" },
+        "source": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["rating", "content", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Private user profiles."
+    },
+    "/users/{userId}/expenses/{expenseId}": {
+      "schema": "Expense",
+      "description": "User-owned financial records."
+    },
+    "/users/{userId}/reports/{reportId}": {
+      "schema": "Report",
+      "description": "User-owned expense reports."
+    },
+    "/feedback/{feedbackId}": {
+      "schema": "Feedback",
+      "description": "Global platform feedback collection."
+    }
+  }
+}
