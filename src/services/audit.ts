@@ -44,14 +44,40 @@ export async function runAudit(opts: {
 
 function parseAuditJSON(raw: string) {
   let text = (raw || '').trim();
-  // Strip markdown fences if the model included them
+  // Strip markdown fences if present
   text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '');
-  // Find the JSON object boundaries to tolerate any preamble
+
+  // Find the start of the first JSON object
   const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  if (start === -1 || end === -1) {
+  if (start === -1) {
     throw new Error('AI did not return a JSON object. Try again or use a clearer document.');
   }
+
+  // Walk through and find the matching closing brace, respecting strings
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  let end = -1;
+
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+
+    if (escape) { escape = false; continue; }
+    if (ch === '\\' && inString) { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) { end = i; break; }
+    }
+  }
+
+  if (end === -1) {
+    throw new Error('AI returned an incomplete JSON object (was likely truncated).');
+  }
+
   try {
     return JSON.parse(text.slice(start, end + 1));
   } catch (e: any) {
