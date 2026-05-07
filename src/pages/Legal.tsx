@@ -42,21 +42,65 @@ export default function Legal() {
           <div className="prose prose-slate max-w-none">
             {isPrivacy ? (
               <div className="space-y-6 text-slate-600 leading-relaxed font-medium">
+                <p>Last updated: 07/05/2026</p>
+                <p>Auditor AI ("we", "our", "the app") is operated by Void-AI, based in India. This policy explains what data we handle and how.</p>
+                
                 <section>
-                  <h2 className="text-xl font-bold text-slate-900 mb-3">1. Data Collection</h2>
-                  <p>Auditor AI collects financial data, including receipts and invoices, solely for the purpose of extraction and auditing verification. We do not sell your data to third parties.</p>
+                  <h2 className="text-xl font-bold text-slate-900 mb-3">1. What we collect</h2>
+                  <ul className="list-disc pl-5 space-y-2">
+                    <li>Files you upload: receipts, invoices, PDFs, and spreadsheets you submit for extraction.</li>
+                    <li>Extracted data: the structured fields (vendor, date, amounts, line items, etc.) returned by our AI processing.</li>
+                    <li>Account information: email address and authentication data managed via Firebase Authentication.</li>
+                  </ul>
                 </section>
+                
                 <section>
-                  <h2 className="text-xl font-bold text-slate-900 mb-3">2. Processing Logic</h2>
-                  <p>Our AI extraction utilizes enterprise-grade large language models. While we aim for 100% precision, users should verify critical entries. Math checks are performed locally and on secure servers.</p>
+                  <h2 className="text-xl font-bold text-slate-900 mb-3">2. How we process your data</h2>
+                  <ul className="list-disc pl-5 space-y-2">
+                    <li>Uploaded documents are sent to Google's Gemini API for AI-based extraction and verification. By using Auditor AI, you acknowledge that your documents are processed by Google as a sub-processor under Google's API terms.</li>
+                    <li>Extracted structured data is stored in Google Firestore associated with your account.</li>
+                    <li>We do not sell your data. We do not use your documents to train any AI model.</li>
+                  </ul>
                 </section>
+                
                 <section>
-                  <h2 className="text-xl font-bold text-slate-900 mb-3">3. Data Retention</h2>
-                  <p>Users can delete their data at any time. Accounts on the Professional plan benefit from enhanced encrypted archival cycles.</p>
+                  <h2 className="text-xl font-bold text-slate-900 mb-3">3. Web search and vendor verification</h2>
+                  <p>For some audits, the AI may use Google Search grounding to verify vendor names or local tax rates. The text of your document may be included in those search queries.</p>
                 </section>
+                
                 <section>
-                  <h2 className="text-xl font-bold text-slate-900 mb-3">4. Security</h2>
-                  <p>All data is encrypted in transit and at rest. We employ multi-layer security protocols to safeguard your financial information.</p>
+                  <h2 className="text-xl font-bold text-slate-900 mb-3">4. Data retention and deletion</h2>
+                  <ul className="list-disc pl-5 space-y-2">
+                    <li>You can delete any audit record from your account at any time from within the app. Deletion is permanent and removes the record from Firestore.</li>
+                    <li>Account deletion: contact Voidthoughts.official@gmail.com and we will delete your account and all associated records within 30 days.</li>
+                  </ul>
+                </section>
+                
+                <section>
+                  <h2 className="text-xl font-bold text-slate-900 mb-3">5. Security</h2>
+                  <ul className="list-disc pl-5 space-y-2">
+                    <li>Data is transmitted over HTTPS.</li>
+                    <li>Firestore data is encrypted at rest by Google Cloud's default encryption.</li>
+                    <li>We do not have additional security certifications (SOC 2, ISO 27001) at this time. Do not upload documents containing data you are not authorized to share.</li>
+                  </ul>
+                </section>
+                
+                <section>
+                  <h2 className="text-xl font-bold text-slate-900 mb-3">6. Your rights</h2>
+                  <ul className="list-disc pl-5 space-y-2">
+                    <li>Under India's Digital Personal Data Protection Act 2023, you have the right to access, correct, and delete your personal data, and to withdraw consent.</li>
+                    <li>Under GDPR (if you are in the EEA/UK), you additionally have the right to data portability and to lodge a complaint with a supervisory authority.</li>
+                  </ul>
+                </section>
+                
+                <section>
+                  <h2 className="text-xl font-bold text-slate-900 mb-3">7. Contact</h2>
+                  <p>For privacy questions, deletion requests, or complaints: Voidthoughts.official@gmail.com</p>
+                </section>
+                
+                <section>
+                  <h2 className="text-xl font-bold text-slate-900 mb-3">8. Changes</h2>
+                  <p>We will update the "Last updated" date at the top of this page when this policy changes. Material changes will be communicated via email if you have an account.</p>
                 </section>
               </div>
             ) : (

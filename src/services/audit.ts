@@ -1,0 +1,60 @@
+import { getAuth } from 'firebase/auth';
+
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "";
+
+export async function runAudit(opts: {
+  fileBase64?: string;
+  mimeType?: string;
+  spreadsheetText?: string;
+  useGoogleSearch?: boolean;
+}) {
+  const user = getAuth().currentUser;
+  if (!user) throw new Error('Not signed in');
+  const token = await user.getIdToken();
+
+  const parts: any[] = [];
+  if (opts.fileBase64 && opts.mimeType) {
+    parts.push({ inlineData: { mimeType: opts.mimeType, data: opts.fileBase64 } });
+  }
+  if (opts.spreadsheetText) {
+    parts.push({ text: `Spreadsheet contents:\n${opts.spreadsheetText}` });
+  }
+  parts.push({ text: 'Audit this document and return the JSON.' });
+
+  const res = await fetch(`${BACKEND_URL}/api/audit`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts }],
+      useGoogleSearch: !!opts.useGoogleSearch,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Backend error ${res.status}`);
+  }
+
+  const { text } = await res.json();
+  return parseAuditJSON(text);
+}
+
+function parseAuditJSON(raw: string) {
+  let text = (raw || '').trim();
+  // Strip markdown fences if the model included them
+  text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '');
+  // Find the JSON object boundaries to tolerate any preamble
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start === -1 || end === -1) {
+    throw new Error('AI did not return a JSON object. Try again or use a clearer document.');
+  }
+  try {
+    return JSON.parse(text.slice(start, end + 1));
+  } catch (e: any) {
+    throw new Error(`AI returned invalid JSON: ${e.message}`);
+  }
+}

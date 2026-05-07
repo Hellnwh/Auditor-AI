@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { UploadCloud, Receipt, Calendar, DollarSign, AlertCircle, Loader2, Trash2, Edit2, Check, X, Search, ChevronUp, ChevronDown, Download, AlertTriangle, Tag, ArrowLeft, User as UserIcon, Star, Mail, FileText, Filter, Zap } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { GoogleGenAI } from "@google/genai";
 import * as xlsx from "xlsx";
 import { Routes, Route, useNavigate, Navigate, Link, useLocation } from "react-router-dom";
 import imageCompression from "browser-image-compression";
@@ -165,75 +164,15 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
         base64Data = await fileToBase64(fileToProcess);
       }
 
-      // 2. Call Gemini API Directly from Frontend
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
-      
-      const prompt = `You are an Elite Financial Auditor with zero tolerance for mathematical or extraction errors. 
-Analyze the provided document (image, PDF, or spreadsheet text) with extreme attention to detail.
-
-STRICT INSTRUCTIONS:
-1. Extract the following fields accurately:
-   - vendor (company name)
-   - date (YYYY-MM-DD or Unknown)
-   - currency (e.g., INR, USD)
-   - items: array of { description, amount, category }
-   - subtotal, tax, discount, total_amount (numbers)
-
-2. Perform rigorous mathematical verification:
-   - CHECK: Is (Sum of item amounts) == Subtotal?
-   - CHECK: Is (Subtotal + Tax - Discount) == Total_Amount?
-   - Set "discrepancy": "yes" if ANY of these checks fail by more than 0.05.
-   - If discrepancy is "yes", you MUST provide a detailed "discrepancy_reason" explaining the exact math error found (e.g., "Sum of items is 450 but subtotal says 400. Difference of 50 found.").
-
-3. Output ONLY a valid JSON object.
-
-Required JSON Schema:
-{
-  "vendor": "string",
-  "date": "YYYY-MM-DD",
-  "currency": "string",
-  "items": [{ "description": "string", "amount": number, "category": "string" }],
-  "subtotal": number,
-  "tax": number,
-  "discount": number,
-  "total_amount": number,
-  "discrepancy": "yes" | "no",
-  "discrepancy_reason": "string" | null,
-  "confidence": number
-}
-
-Now process the document:`;
-
-      const finalPrompt = prompt + (textContent ? `\n\nSPREADSHEET DATA:\n${textContent}` : "");
-      
-      const contents = textContent 
-        ? [{ parts: [{ text: finalPrompt }] }] 
-        : [{ 
-            parts: [
-              { text: finalPrompt },
-              { inlineData: { data: base64Data, mimeType: file.type } }
-            ] 
-          }];
-
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents,
-        config: {
-          responseMimeType: "application/json",
-        }
+      // 2. Call backend for AI extraction
+      const { runAudit } = await import('./services/audit');
+      const parsed = await runAudit({
+        fileBase64: base64Data,
+        mimeType: base64Data ? file.type : undefined,
+        spreadsheetText: textContent,
+        useGoogleSearch: true
       });
-
-      if (!response.text) throw new Error("No intelligence returned from Auditor AI.");
-
-      let rawText = response.text.trim();
-      // Handle potential markdown fences if model Ignores responseMimeType
-      if (rawText.startsWith("```json")) {
-        rawText = rawText.replace(/^```json\n/, "").replace(/\n```$/, "");
-      } else if (rawText.startsWith("```")) {
-        rawText = rawText.replace(/^```\n/, "").replace(/\n```$/, "");
-      }
-
-      const parsed = JSON.parse(rawText);
+      
       console.log("Extracted Data:", parsed);
 
       // 3. Save to Firebase
@@ -256,7 +195,7 @@ Now process the document:`;
           discrepancy: parsed.discrepancy || "no",
           discrepancyReason: parsed.discrepancy_reason || parsed.discrepancyReason || null,
           confidence: parsed.confidence || 0,
-          rawText: rawText,
+          rawText: JSON.stringify(parsed),
           createdAt: serverTimestamp()
         };
 
@@ -285,8 +224,8 @@ Now process the document:`;
     } catch (e: any) {
       console.error("Extraction failed", e);
       let errorMsg = e.message || "Extraction failed.";
-      if (errorMsg.includes("API_KEY_INVALID")) {
-        errorMsg = "Audit Engine Key Error. Please ensure your environment is configured.";
+      if (errorMsg.includes("API_KEY_INVALID") || errorMsg.includes("leaked")) {
+        errorMsg = "Security Breach: Your API key has been reported as leaked. Please update your API key in settings or contact support.";
       }
       setError(errorMsg);
       updateToast(toastId, errorMsg, "error");
