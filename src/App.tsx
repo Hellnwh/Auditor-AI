@@ -32,7 +32,7 @@ const formatCurrency = (amount: number, currency: string | null) => {
 };
 
 export function DashboardContent({ expenses, authFetch, logout, addToast, updateToast }: any) {
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
 
@@ -41,17 +41,23 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
   const [filterMinAmount, setFilterMinAmount] = useState("");
   const [filterMaxAmount, setFilterMaxAmount] = useState("");
   const [filterCategory, setFilterCategory] = useState("All");
+  const [filterDiscrepancy, setFilterDiscrepancy] = useState("All");
+  const [filterStartDate, setFilterStartDate] = useState("");
+  const [filterEndDate, setFilterEndDate] = useState("");
 
   const { user, refreshUser } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
-  const hasActiveFilters = filterVendor !== "" || filterMinAmount !== "" || filterMaxAmount !== "" || filterCategory !== "All";
+  const hasActiveFilters = filterVendor !== "" || filterMinAmount !== "" || filterMaxAmount !== "" || filterCategory !== "All" || filterDiscrepancy !== "All" || filterStartDate !== "" || filterEndDate !== "";
   const clearFilters = () => {
     setFilterVendor("");
     setFilterMinAmount("");
     setFilterMaxAmount("");
     setFilterCategory("All");
+    setFilterDiscrepancy("All");
+    setFilterStartDate("");
+    setFilterEndDate("");
   };
 
   const [uploadConfirm, setUploadConfirm] = useState(false);
@@ -100,11 +106,11 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setError("");
-    setFile(e.target.files?.[0] || null);
+    setFiles(Array.from(e.target.files || []));
   };
 
   const handleUploadClick = () => {
-    if (!file) return;
+    if (files.length === 0) return;
     setUploadConfirm(true);
   };
 
@@ -121,149 +127,163 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
   };
 
   async function confirmUpload() {
-    if (!file) return;
+    if (files.length === 0) return;
     setUploadConfirm(false);
     setUploading(true);
     setError("");
 
-    const toastId = addToast("Initializing AI Extraction...", "loading");
+    const toastId = addToast(`Analyzing ${files.length} document${files.length > 1 ? 's' : ''}...`, "loading");
+    let processedCount = 0;
 
-    try {
-      if (user?.plan === "FREE" && user.scansLeft <= 0) {
-        const msg = "Scan Limit Reached. High-performance extraction is reserved for Pro licenses.";
-        setError(msg);
-        updateToast(toastId, msg, "error");
-        setUploading(false);
-        return;
+    for (const file of files) {
+      if (file.size > 10 * 1024 * 1024) {
+         addToast(`Skipped ${file.name}: File > 10MB`, "error");
+         continue;
       }
+      try {
+        if (user?.plan === "FREE" && user.scansLeft <= 0) {
+          const msg = "Scan Limit Reached. High-performance extraction is reserved for Pro licenses.";
+          setError(msg);
+          updateToast(toastId, msg, "error");
+          break;
+        }
 
-      // 1. Prepare Data
-      let textContent = "";
-      let base64Data = "";
-      const isExcel = file.name.match(/\.(xlsx|xls|csv)$/i);
+        // 1. Prepare Data
+        let textContent = "";
+        let base64Data = "";
+        const isExcel = file.name.match(/\.(xlsx|xls|csv)$/i);
 
-      if (isExcel) {
-        const buffer = await file.arrayBuffer();
-        const workbook = xlsx.read(buffer, { type: "buffer" });
-        
-        let foundData = false;
-        for (const sheetName of workbook.SheetNames) {
-          if (sheetName.match(/read\s*me|instruction|guideline|intro/i)) continue;
+        if (isExcel) {
+          const buffer = await file.arrayBuffer();
+          const workbook = xlsx.read(buffer, { type: "buffer" });
           
-          const sheet = workbook.Sheets[sheetName];
-          const rows: any[][] = xlsx.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: "" });
-          
-          const nonEmptyRows = rows.filter(row => row.some(cell => cell !== undefined && cell !== null && String(cell).trim() !== ''));
-          
-          if (nonEmptyRows.length > 0) {
-            textContent = `\n--- Sheet: ${sheetName} ---\n`;
+          let foundData = false;
+          for (const sheetName of workbook.SheetNames) {
+            if (sheetName.match(/read\s*me|instruction|guideline|intro/i)) continue;
             
-            const maxCols = Math.max(...nonEmptyRows.map(r => r.length));
-            if (maxCols > 0) {
-              nonEmptyRows.forEach((row, i) => {
-                const cells = Array.from({ length: maxCols }).map((_, c) => {
-                  const val = row[c];
-                  return val ? String(val).replace(/\|/g, '\\|').replace(/\n/g, ' ') : '';
+            const sheet = workbook.Sheets[sheetName];
+            const rows: any[][] = xlsx.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: "" });
+            
+            const nonEmptyRows = rows.filter(row => row.some(cell => cell !== undefined && cell !== null && String(cell).trim() !== ''));
+            
+            if (nonEmptyRows.length > 0) {
+              textContent = `\n--- Sheet: ${sheetName} ---\n`;
+              
+              const maxCols = Math.max(...nonEmptyRows.map(r => r.length));
+              if (maxCols > 0) {
+                nonEmptyRows.forEach((row, i) => {
+                  const cells = Array.from({ length: maxCols }).map((_, c) => {
+                    const val = row[c];
+                    return val ? String(val).replace(/\|/g, '\\|').replace(/\n/g, ' ') : '';
+                  });
+                  textContent += `| ${cells.join(' | ')} |\n`;
+                  if (i === 0) {
+                    const separator = Array.from({ length: maxCols }).map(() => '---');
+                    textContent += `| ${separator.join(' | ')} |\n`;
+                  }
                 });
-                textContent += `| ${cells.join(' | ')} |\n`;
-                if (i === 0) {
-                  const separator = Array.from({ length: maxCols }).map(() => '---');
-                  textContent += `| ${separator.join(' | ')} |\n`;
-                }
-              });
-              foundData = true;
-              break; // Limit to one invoice per upload
+                foundData = true;
+                break; // Limit to one invoice per upload
+              }
+            }
+          }
+          
+          if (!foundData && workbook.SheetNames.length > 0) {
+            const sheetName = workbook.SheetNames[0];
+            const sheet = workbook.Sheets[sheetName];
+            textContent = `\n--- Sheet: ${sheetName} ---\n`;
+            textContent += xlsx.utils.sheet_to_csv(sheet);
+          }
+        } else {
+          // Image or PDF
+          let fileToProcess = file;
+          if (file.type.startsWith("image/")) {
+             const options = {
+               maxSizeMB: 1,
+               maxWidthOrHeight: 1920,
+               useWebWorker: true,
+             };
+             fileToProcess = await imageCompression(file, options);
+          }
+          base64Data = await fileToBase64(fileToProcess);
+        }
+
+        // 2. Call backend for AI extraction
+        const { runAudit } = await import('./services/audit');
+        const parsed = await runAudit({
+          fileBase64: base64Data,
+          mimeType: base64Data ? file.type : undefined,
+          spreadsheetText: textContent,
+          useGoogleSearch: true
+        });
+        
+        console.log("Extracted Data:", parsed);
+
+        // 3. Save to Firebase
+        const { doc, collection, setDoc, getDoc, updateDoc, serverTimestamp } = await import('firebase/firestore');
+        const { db } = await import('./lib/firebase');
+        const { handleFirestoreError, OperationType } = await import('./lib/firestoreUtils');
+
+        if (user) {
+          const expensePath = `users/${user.id}/expenses`;
+          const expenseRef = doc(collection(db, 'users', user.id, 'expenses'));
+          const expenseData = {
+            vendor: parsed.vendor || "Unknown",
+            date: parsed.date || "Unknown",
+            amount: parseFloat(parsed.total_amount) || 0,
+            subtotal: parseFloat(parsed.subtotal) || null,
+            taxAmount: parseFloat(parsed.tax) || null,
+            currency: parsed.currency || "INR",
+            category: parsed.category || "Other",
+            paymentMethod: parsed.payment_method || "Unknown",
+            lineItems: JSON.stringify(parsed.items || []),
+            discrepancy: parsed.discrepancy || "no",
+            discrepancyReason: parsed.discrepancy_reason || parsed.discrepancyReason || null,
+            confidence: parsed.confidence || 0,
+            rawText: JSON.stringify(parsed),
+            createdAt: serverTimestamp()
+          };
+
+          try {
+            await setDoc(expenseRef, expenseData);
+          } catch (err) {
+            handleFirestoreError(err, OperationType.WRITE, `${expensePath}/${expenseRef.id}`);
+          }
+
+          if (user.plan === "FREE") {
+            const userRef = doc(db, 'users', user.id);
+            const userDoc = await getDoc(userRef);
+            if (userDoc.exists()) {
+               try {
+                 await updateDoc(userRef, { scansLeft: Math.max(0, userDoc.data().scansLeft - 1) });
+               } catch (err) {
+                 handleFirestoreError(err, OperationType.UPDATE, `users/${user.id}`);
+               }
+               if (authFetch) {
+                 // Removed refresh user within loop to avoid unnecessary requests; caller relies on snapshot
+               }
             }
           }
         }
-        
-        if (!foundData && workbook.SheetNames.length > 0) {
-          const sheetName = workbook.SheetNames[0];
-          const sheet = workbook.Sheets[sheetName];
-          textContent = `\n--- Sheet: ${sheetName} ---\n`;
-          textContent += xlsx.utils.sheet_to_csv(sheet);
+        processedCount++;
+      } catch (e: any) {
+        console.error(`Extraction failed for ${file.name}`, e);
+        let errorMsg = e.message || "Extraction failed.";
+        if (errorMsg.includes("API_KEY_INVALID") || errorMsg.includes("leaked")) {
+           errorMsg = "API Key Error. Check configuration.";
+        } else if (errorMsg.includes("auth token") || errorMsg.includes("unauthenticated")) {
+           errorMsg = "Your session expired, please sign in again.";
         }
-      } else {
-        // Image or PDF
-        let fileToProcess = file;
-        if (file.type.startsWith("image/")) {
-           const options = {
-             maxSizeMB: 1,
-             maxWidthOrHeight: 1920,
-             useWebWorker: true,
-           };
-           fileToProcess = await imageCompression(file, options);
-        }
-        base64Data = await fileToBase64(fileToProcess);
+        addToast(`Failed: ${file.name} - ${errorMsg}`, "error");
       }
+    }
 
-      // 2. Call backend for AI extraction
-      const { runAudit } = await import('./services/audit');
-      const parsed = await runAudit({
-        fileBase64: base64Data,
-        mimeType: base64Data ? file.type : undefined,
-        spreadsheetText: textContent,
-        useGoogleSearch: true
-      });
-      
-      console.log("Extracted Data:", parsed);
-
-      // 3. Save to Firebase
-      const { doc, collection, setDoc, getDoc, updateDoc, serverTimestamp } = await import('firebase/firestore');
-      const { db } = await import('./lib/firebase');
-      const { handleFirestoreError, OperationType } = await import('./lib/firestoreUtils');
-
-      if (user) {
-        const expensePath = `users/${user.id}/expenses`;
-        const expenseRef = doc(collection(db, 'users', user.id, 'expenses'));
-        const expenseData = {
-          vendor: parsed.vendor || "Unknown",
-          date: parsed.date || "Unknown",
-          amount: parseFloat(parsed.total_amount) || 0,
-          subtotal: parseFloat(parsed.subtotal) || null,
-          taxAmount: parseFloat(parsed.tax) || null,
-          currency: parsed.currency || "INR",
-          category: parsed.category || "Other",
-          lineItems: JSON.stringify(parsed.items || []),
-          discrepancy: parsed.discrepancy || "no",
-          discrepancyReason: parsed.discrepancy_reason || parsed.discrepancyReason || null,
-          confidence: parsed.confidence || 0,
-          rawText: JSON.stringify(parsed),
-          createdAt: serverTimestamp()
-        };
-
-        try {
-          await setDoc(expenseRef, expenseData);
-        } catch (err) {
-          handleFirestoreError(err, OperationType.WRITE, `${expensePath}/${expenseRef.id}`);
-        }
-
-        if (user.plan === "FREE") {
-          const userRef = doc(db, 'users', user.id);
-          const userDoc = await getDoc(userRef);
-          if (userDoc.exists()) {
-             try {
-               await updateDoc(userRef, { scansLeft: Math.max(0, userDoc.data().scansLeft - 1) });
-             } catch (err) {
-               handleFirestoreError(err, OperationType.UPDATE, `users/${user.id}`);
-             }
-             refreshUser();
-          }
-        }
-      }
-
-      setFile(null);
-      updateToast(toastId, "Audit Complete: Precision Verified.", "success");
-    } catch (e: any) {
-      console.error("Extraction failed", e);
-      let errorMsg = e.message || "Extraction failed.";
-      if (errorMsg.includes("API_KEY_INVALID") || errorMsg.includes("leaked")) {
-        errorMsg = "Security Breach: Your API key has been reported as leaked. Please update your API key in settings or contact support.";
-      }
-      setError(errorMsg);
-      updateToast(toastId, errorMsg, "error");
-    } finally {
-      setUploading(false);
+    setFiles([]);
+    setUploading(false);
+    if (processedCount > 0) {
+       updateToast(toastId, `Audit Complete: ${processedCount} processed.`, "success");
+    } else {
+       updateToast(toastId, `No files processed.`, "error");
     }
   }
 
@@ -348,6 +368,26 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
     if (filterCategory !== "All") {
       result = result.filter(e => e.category === filterCategory);
     }
+    if (filterDiscrepancy !== "All") {
+      result = result.filter(e => {
+        const hasDisc = (e.discrepancy || "").toLowerCase() === "yes";
+        return filterDiscrepancy === "Yes" ? hasDisc : !hasDisc;
+      });
+    }
+    if (filterStartDate) {
+      const start = new Date(filterStartDate).getTime();
+      result = result.filter(e => {
+         const expDate = new Date(e.date).getTime();
+         return isNaN(expDate) || expDate >= start;
+      });
+    }
+    if (filterEndDate) {
+      const end = new Date(filterEndDate).getTime();
+      result = result.filter(e => {
+         const expDate = new Date(e.date).getTime();
+         return isNaN(expDate) || expDate <= end;
+      });
+    }
     if (filterMinAmount) {
       const min = parseFloat(filterMinAmount);
       if (!isNaN(min)) result = result.filter(e => e.amount >= min);
@@ -374,6 +414,15 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
     return result;
   }, [expenses, sortConfig, filterVendor, filterMinAmount, filterMaxAmount, filterCategory]);
 
+  const currencyTotals = useMemo(() => {
+    const totals: Record<string, number> = {};
+    for (const exp of processedExpenses) {
+      const cur = exp.currency || 'USD';
+      totals[cur] = (totals[cur] || 0) + exp.amount;
+    }
+    return Object.entries(totals).sort((a, b) => b[1] - a[1]);
+  }, [processedExpenses]);
+
   const requestSort = (key: SortKey) => {
     let direction: SortDirection = "asc";
     if (sortConfig && sortConfig.key === key && sortConfig.direction === "asc") {
@@ -399,20 +448,53 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
   };
 
   const exportCSV = () => {
-    const headers = ["ID", "Vendor", "Category", "Payment Method", "Date", "Currency", "Amount", "Subtotal", "Tax", "Confidence"];
-    const rows = processedExpenses.map(exp => [
-      exp.id,
-      `"${exp.vendor.replace(/"/g, '""')}"`,
-      `"${exp.category || "Other"}"`,
-      `"${exp.paymentMethod || "Unknown"}"`,
-      `"${exp.date}"`,
-      exp.currency || "USD",
-      exp.amount.toFixed(2),
-      exp.subtotal !== null ? exp.subtotal.toFixed(2) : "",
-      exp.taxAmount !== null ? exp.taxAmount.toFixed(2) : "",
-      exp.confidence !== null ? exp.confidence.toFixed(1) : ""
-    ].join(","));
+    const headers = [
+      "ID", "Vendor", "Date", "Currency", "Payment Method", "Confidence", 
+      "Discrepancy", "Discrepancy Reason", 
+      "Total Amount", "Subtotal", "Tax", "Discount",
+      "Item Name", "Item Quantity", "Item Unit Price", "Item Total Price", "Item Category"
+    ];
     
+    const rows: string[] = [];
+    
+    processedExpenses.forEach(exp => {
+      const baseRow = [
+        exp.id,
+        `"${exp.vendor.replace(/"/g, '""')}"`,
+        `"${exp.date}"`,
+        exp.currency || "USD",
+        `"${exp.paymentMethod || "Unknown"}"`,
+        exp.confidence !== null ? Math.round((exp.confidence || 0) * 100) + '%' : "",
+        exp.discrepancy || "no",
+        `"${(exp.discrepancyReason || "").replace(/"/g, '""')}"`,
+        exp.amount.toFixed(2),
+        exp.subtotal !== null ? exp.subtotal.toFixed(2) : "",
+        exp.taxAmount !== null ? exp.taxAmount.toFixed(2) : "",
+        exp.discount !== null ? exp.discount.toFixed(2) : ""
+      ];
+
+      const items = parseLineItems(exp.lineItems);
+      if (items.length === 0) {
+         rows.push([...baseRow, "", "", "", "", `"${exp.category || "Other"}"`].join(","));
+      } else {
+         items.forEach((item: any) => {
+            const itemName = item.description || item.name || item.category || "Unknown Item";
+            const q = item.quantity;
+            const up = item.unit_price;
+            const p = item.amount !== undefined && item.amount !== null ? item.amount : item.total_price;
+            const cat = item.category || exp.category || "Other";
+            
+            rows.push([...baseRow, 
+              `"${itemName.replace(/"/g, '""')}"`,
+              q !== undefined && q !== null ? q : "",
+              up !== undefined && up !== null ? up : "",
+              p !== undefined && p !== null ? p : "",
+              `"${cat}"`
+            ].join(","));
+         });
+      }
+    });
+
     const csvContent = [headers.join(","), ...rows].join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
@@ -524,24 +606,30 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
               <p className="text-xs text-slate-500 mb-6 font-medium leading-relaxed">Scan JPG, PNG, WebP, PDF invoices, or Excel spreadsheets instantly.</p>
 
               <label className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50 hover:bg-slate-50 cursor-pointer transition-all group relative mb-4 p-4 text-center">
-                {file ? (
-                  <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="text-center">
-                    <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center mx-auto mb-3 text-blue-600">
+                {files.length > 0 ? (
+                  <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="text-center w-full">
+                    <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center mx-auto mb-3 text-blue-600 relative">
                        <FileText className="h-6 w-6" />
+                       {files.length > 1 && (
+                         <span className="absolute -top-2 -right-2 bg-blue-600 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full font-bold shadow-sm">{files.length}</span>
+                       )}
                     </div>
-                    <span className="text-xs font-bold text-slate-900 break-all line-clamp-2 px-2 leading-tight">{file.name}</span>
-                    <button onClick={(e) => { e.preventDefault(); setFile(null); }} className="mt-2 text-[10px] font-bold text-red-500 hover:text-red-600 underline">Remove</button>
+                    <span className="text-xs font-bold text-slate-900 break-all line-clamp-2 px-2 leading-tight">
+                      {files.length === 1 ? files[0].name : `${files.length} documents selected`}
+                    </span>
+                    <button onClick={(e) => { e.preventDefault(); setFiles([]); }} className="mt-2 text-[10px] font-bold text-red-500 hover:text-red-600 underline">Remove</button>
                   </motion.div>
                 ) : (
                   <>
                     <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform">
                       <UploadCloud className="h-6 w-6 text-slate-400 group-hover:text-blue-500 transition-colors" />
                     </div>
-                    <span className="text-xs font-bold text-slate-600 group-hover:text-slate-900">Click or drag document</span>
+                    <span className="text-xs font-bold text-slate-600 group-hover:text-slate-900">Click or drag document(s)</span>
                   </>
                 )}
                 <input
                   type="file"
+                  multiple
                   className="hidden"
                   accept="image/jpeg,image/png,image/webp,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
                   onChange={handleFileChange}
@@ -557,13 +645,13 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
 
               <button
                 onClick={handleUploadClick}
-                disabled={!file || uploading}
+                disabled={files.length === 0 || uploading}
                 className="w-full flex items-center justify-center py-4 px-4 rounded-2xl text-sm font-bold text-white transition-all bg-slate-900 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed shadow-xl shadow-slate-200"
               >
                 {uploading ? (
                   <>
                     <Loader2 className="w-5 h-5 mr-3 animate-spin" />
-                    Auditing...
+                    Analyzing...
                   </>
                 ) : (
                   "Run Vision Audit"
@@ -578,9 +666,21 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
             <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-full shadow-indigo-100/30">
               <div className="p-6 border-b border-slate-50 flex flex-col space-y-4">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div>
+                  <div className="flex flex-col">
                     <h2 className="text-base font-bold text-slate-900">Processed Ledger</h2>
-                    <p className="text-sm text-slate-500 font-medium">Precision Audits: {processedExpenses.length} entries</p>
+                    <div className="flex items-center space-x-3 text-sm text-slate-500 font-medium">
+                      <span>{processedExpenses.length} entries</span>
+                      {currencyTotals.length > 0 && (
+                        <div className="flex items-center space-x-2 border-l border-slate-200 pl-3">
+                          {currencyTotals.map(([cur, amount]) => (
+                            <span key={cur} className="flex items-center space-x-1">
+                              <span className="text-[10px] uppercase font-bold text-slate-400">{cur}</span>
+                              <span className="text-slate-700 font-black">{formatCurrency(amount, cur)}</span>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <button 
@@ -598,8 +698,8 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 bg-slate-50/50 p-3 rounded-2xl border border-slate-100">
-                  <div className="relative">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 bg-slate-50/50 p-3 rounded-2xl border border-slate-100">
+                  <div className="relative col-span-1 sm:col-span-2 md:col-span-1 lg:col-span-2">
                     <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                     <input 
                       type="text" 
@@ -630,6 +730,35 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
                       <option value="Other">Other</option>
                     </select>
                   </div>
+                  <div className="relative">
+                    <AlertCircle className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <select 
+                      value={filterDiscrepancy}
+                      onChange={(e) => setFilterDiscrepancy(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/10 focus:outline-none font-medium appearance-none"
+                    >
+                      <option value="All">Any Status</option>
+                      <option value="Yes">Discrepancy Found</option>
+                      <option value="No">No Discrepancies</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <input 
+                      title="Start Date"
+                      type="date" 
+                      value={filterStartDate}
+                      onChange={(e) => setFilterStartDate(e.target.value)}
+                      className="w-full px-2 py-2 text-[10px] bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/10 focus:outline-none font-medium text-slate-600"
+                    />
+                    <span className="text-slate-300">-</span>
+                    <input 
+                      title="End Date"
+                      type="date" 
+                      value={filterEndDate}
+                      onChange={(e) => setFilterEndDate(e.target.value)}
+                      className="w-full px-2 py-2 text-[10px] bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/10 focus:outline-none font-medium text-slate-600"
+                    />
+                  </div>
                   <div className="flex items-center space-x-2">
                     <input 
                       type="number" 
@@ -647,11 +776,6 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
                       className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/10 focus:outline-none font-medium"
                     />
                   </div>
-                  <div className="flex items-center justify-end">
-                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm flex items-center">
-                       {user?.plan} MODE
-                    </div>
-                  </div>
                 </div>
               </div>
 
@@ -660,8 +784,12 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
                   <div className="w-20 h-20 bg-slate-50 rounded-3xl flex items-center justify-center mb-6 border border-slate-100 text-slate-200">
                     <Receipt className="w-10 h-10" />
                   </div>
-                  <h3 className="text-lg font-bold text-slate-900 leading-tight">No data extracted yet</h3>
-                  <p className="text-sm text-slate-500 max-w-sm mt-2 font-medium">Upload your first document to begin the AI audit loop.</p>
+                  <h3 className="text-lg font-bold text-slate-900 leading-tight">
+                    {expenses.length === 0 ? "No data extracted yet" : "No matching records"}
+                  </h3>
+                  <p className="text-sm text-slate-500 max-w-sm mt-2 font-medium">
+                    {expenses.length === 0 ? "Upload your first document to begin the AI audit loop." : "Try adjusting your search criteria or clearing filters."}
+                  </p>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -737,12 +865,12 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
                              <div className="flex items-center space-x-2">
                                 <div className="h-1.5 flex-1 max-w-[60px] bg-slate-100 rounded-full overflow-hidden border border-slate-50">
                                    <div 
-                                      className={`h-full rounded-full ${(exp.confidence || 0) > 90 ? 'bg-emerald-500' : (exp.confidence || 0) > 70 ? 'bg-amber-500' : 'bg-red-500'}`} 
-                                      style={{ width: `${(exp.confidence || 0)}%` }} 
+                                      className={`h-full rounded-full ${Math.round((exp.confidence || 0) * 100) > 90 ? 'bg-emerald-500' : Math.round((exp.confidence || 0) * 100) > 70 ? 'bg-amber-500' : 'bg-red-500'}`} 
+                                      style={{ width: `${Math.round((exp.confidence || 0) * 100)}%` }} 
                                    />
                                 </div>
-                                <span className={`text-[10px] font-bold ${(exp.confidence || 0) > 90 ? 'text-emerald-600' : (exp.confidence || 0) > 70 ? 'text-amber-600' : 'text-red-600'}`}>
-                                   {Math.round(exp.confidence || 0)}%
+                                <span className={`text-[10px] font-bold ${Math.round((exp.confidence || 0) * 100) > 90 ? 'text-emerald-600' : Math.round((exp.confidence || 0) * 100) > 70 ? 'text-amber-600' : 'text-red-600'}`}>
+                                   {Math.round((exp.confidence || 0) * 100)}%
                                 </span>
                                 {exp.userRating && (
                                    <div className="flex items-center ml-2 bg-yellow-50 px-1.5 py-0.5 rounded border border-yellow-100" title="User Feedback Provided">
@@ -801,7 +929,7 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
             className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6"
           >
             <h3 className="text-lg font-bold text-slate-900 mb-2">Analyze with Vision AI?</h3>
-            <p className="text-sm text-slate-500 mb-6">Are you sure you want to extract data from <strong className="break-all text-slate-800">{file?.name}</strong>? Gemini will scan for line items, categories, and taxes.</p>
+            <p className="text-sm text-slate-500 mb-6">Are you sure you want to extract data from <strong className="break-all text-slate-800">{files.length === 1 ? files[0].name : `${files.length} documents`}</strong>? Gemini will scan for line items, categories, and taxes.</p>
             <div className="flex justify-end space-x-3">
               <button 
                 onClick={() => setUploadConfirm(false)}
@@ -815,7 +943,7 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
                 disabled={uploading}
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
               >
-                {uploading ? "Analyzing..." : "Analyze Receipt"}
+                {uploading ? "Analyzing..." : "Analyze"}
               </button>
             </div>
           </motion.div>

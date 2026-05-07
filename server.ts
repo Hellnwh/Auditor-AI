@@ -58,22 +58,44 @@ async function requireAuth(req: any, res: any, next: any) {
   }
 }
 
-// Per-user simple rate limit (in-memory; replace with Redis in production)
-const recentCalls = new Map<string, number[]>();
-function rateLimit(uid: string, maxPerMinute = 20) {
+// Production-ready rate limit via Firestore
+async function rateLimit(uid: string, maxPerMinute = 20): Promise<boolean> {
+  const db = admin.firestore();
+  const rateLimitRef = db.collection('rate_limits').doc(uid);
   const now = Date.now();
-  const arr = (recentCalls.get(uid) || []).filter(t => now - t < 60_000);
-  if (arr.length >= maxPerMinute) return false;
-  arr.push(now);
-  recentCalls.set(uid, arr);
-  return true;
+  
+  try {
+    return await db.runTransaction(async (t) => {
+      const doc = await t.get(rateLimitRef);
+      if (!doc.exists) {
+        t.set(rateLimitRef, { calls: [now] });
+        return true;
+      }
+      
+      let calls = doc.data()?.calls || [];
+      calls = calls.filter((time: number) => now - time < 60_000);
+      
+      if (calls.length >= maxPerMinute) {
+        return false;
+      }
+      
+      calls.push(now);
+      t.set(rateLimitRef, { calls }, { merge: true });
+      return true;
+    });
+  } catch (err) {
+    console.error('Firestore rate limit error:', err);
+    // Fallback securely: allow if DB fails to prevent total outage
+    return true; 
+  }
 }
 
 const SYSTEM_INSTRUCTION = `You are an Elite Financial Auditor. Your job is to extract structured financial data from a document (image, PDF, or spreadsheet text) and verify its mathematical integrity.
 
 EXTRACTION RULES
-- Extract: vendor, date (YYYY-MM-DD, or "Unknown" if illegible), currency (ISO 4217 code such as INR, USD, EUR), and an items array where each item has description, amount, and category.
-- Categorize items into one of: "Goods", "Services", "Food & Beverage", "Travel", "Utilities", "Professional Fees", "Tax", "Shipping", "Other".
+- Extract: vendor, date (YYYY-MM-DD, or "Unknown" if illegible), currency (ISO 4217 code such as INR, USD, EUR), payment_method (cash/card/UPI/bank transfer/unknown), and an items array.
+- For each item extract: description (string), quantity (number, default 1 if not stated), unit_price (number), amount (number = quantity * unit_price), category (string from the allowed list). When a quantity column is present, use it; otherwise infer 1.
+- Pick the SINGLE most specific category from this list. Do NOT default to 'Other' unless absolutely no other category fits. Office stationery, computer hardware, packaging, raw materials → 'Goods'. Coffee, food, restaurants → 'Food & Beverage'. Hosting, electricity, internet → 'Utilities'. Lawyers, accountants, consulting → 'Professional Fees'. Allowed: "Goods", "Services", "Food & Beverage", "Travel", "Utilities", "Professional Fees", "Tax", "Shipping", "Other".
 - All monetary fields (amount, subtotal, tax, discount, total_amount) must be numbers, not strings. Use 0 if a field is absent.
 
 SPREADSHEET INPUT
@@ -103,16 +125,19 @@ const RESPONSE_SCHEMA = {
     vendor: { type: Type.STRING },
     date: { type: Type.STRING, description: 'YYYY-MM-DD or "Unknown"' },
     currency: { type: Type.STRING, description: 'ISO 4217 code, e.g. INR, USD' },
+    payment_method: { type: Type.STRING, description: 'cash/card/UPI/bank transfer/unknown' },
     items: {
       type: Type.ARRAY,
       items: {
         type: Type.OBJECT,
         properties: {
           description: { type: Type.STRING },
+          quantity: { type: Type.NUMBER },
+          unit_price: { type: Type.NUMBER },
           amount: { type: Type.NUMBER },
           category: { type: Type.STRING },
         },
-        required: ['description', 'amount', 'category'],
+        required: ['description', 'quantity', 'unit_price', 'amount', 'category'],
       },
     },
     subtotal: { type: Type.NUMBER },
@@ -124,7 +149,7 @@ const RESPONSE_SCHEMA = {
     confidence: { type: Type.NUMBER, description: '0 to 1' },
   },
   required: [
-    'vendor', 'date', 'currency', 'items',
+    'vendor', 'date', 'currency', 'payment_method', 'items',
     'subtotal', 'tax', 'discount', 'total_amount',
     'discrepancy', 'confidence',
   ],
@@ -145,7 +170,8 @@ async function startServer() {
   });
 
   app.post('/api/audit', requireAuth, async (req: any, res) => {
-    if (!rateLimit(req.uid)) {
+    const isAllowed = await rateLimit(req.uid);
+    if (!isAllowed) {
       return res.status(429).json({ error: 'Rate limit exceeded' });
     }
   

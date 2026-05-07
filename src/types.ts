@@ -29,6 +29,7 @@ export interface Expense {
   userFeedback: string | null;
   discrepancy: "yes" | "no" | null;
   discrepancyReason: string | null;
+  lineItems?: string | null;
   rawText: string;
   confidence: number | null;
   createdAt: string;
