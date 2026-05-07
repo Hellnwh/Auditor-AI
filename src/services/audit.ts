@@ -1,6 +1,6 @@
 import { auth } from '../lib/firebase';
 
-const BACKEND_URL = import.meta.env.DEV ? "" : (import.meta.env.VITE_BACKEND_URL || "").replace(/\/+$/, '');
+const BACKEND_URL = (import.meta as any).env.DEV ? "" : ((import.meta as any).env.VITE_BACKEND_URL || "").replace(/\/+$/, '');
 
 export async function runAudit(opts: {
   fileBase64?: string;

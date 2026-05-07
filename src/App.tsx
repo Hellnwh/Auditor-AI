@@ -21,13 +21,18 @@ import { Sidebar, MobileNav } from "./components/Navigation";
 import { User, Expense, SortKey, SortDirection } from "./types";
 
 const formatCurrency = (amount: number, currency: string | null) => {
+  const fmtSafe = (n: any, decimals = 2): string => {
+    if (n === null || n === undefined || Number.isNaN(Number(n))) return '0.00';
+    return Number(n).toFixed(decimals);
+  };
+
   try {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: currency || 'USD',
     }).format(amount);
   } catch {
-    return `${currency === 'INR' ? '₹' : '$'}${amount.toFixed(2)}`;
+    return `${currency === 'INR' ? '₹' : '$'}${fmtSafe(amount)}`;
   }
 };
 
@@ -514,139 +519,160 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [activeMenuId]);
 
+  const fmt = (n: any, decimals = 2): string => {
+    if (n === null || n === undefined || Number.isNaN(Number(n))) return '';
+    return Number(n).toFixed(decimals);
+  };
+
   const exportSingleJSON = (exp: Expense) => {
-    const dataStr = JSON.stringify(exp, null, 2);
-    const blob = new Blob([dataStr], { type: "application/json" });
-    const link = document.createElement("a");
-    const vendorSlug = exp.vendor.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-    const dateStr = exp.date;
-    const shortId = exp.id.slice(0, 6);
-    
-    link.href = URL.createObjectURL(blob);
-    link.download = `${vendorSlug}-${dateStr}-${shortId}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(link.href);
-    addToast("Audit data exported as JSON.", "success");
+    try {
+      const dataStr = JSON.stringify(exp, null, 2);
+      const blob = new Blob([dataStr], { type: "application/json" });
+      const link = document.createElement("a");
+      const vendorSlug = exp.vendor.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+      const dateStr = exp.date;
+      const shortId = exp.id.slice(0, 6);
+      
+      link.href = URL.createObjectURL(blob);
+      link.download = `${vendorSlug}-${dateStr}-${shortId}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(link.href);
+      addToast("Audit data exported as JSON.", "success");
+    } catch (err: any) {
+      console.error('JSON Export failed:', err);
+      addToast(`Export failed: ${err.message || 'Unknown error'}`, "error");
+    }
   };
 
   const exportSingleCSV = (exp: Expense) => {
-    const summaryHeaders = ["Vendor", "Date", "Currency", "Subtotal", "Tax", "Discount", "Total", "Discrepancy", "Discrepancy Reason", "Confidence"];
-    const summaryRow = [
-      `"${exp.vendor.replace(/"/g, '""')}"`,
-      `"${exp.date}"`,
-      exp.currency || "USD",
-      exp.subtotal !== null ? exp.subtotal.toFixed(2) : "0.00",
-      exp.taxAmount !== null ? exp.taxAmount.toFixed(2) : "0.00",
-      exp.discount !== null ? exp.discount.toFixed(2) : "0.00",
-      exp.amount.toFixed(2),
-      exp.discrepancy || "no",
-      `"${(exp.discrepancyReason || "").replace(/"/g, '""')}"`,
-      exp.confidence !== null ? exp.confidence.toFixed(2) : "0.00"
-    ].join(",");
-
-    const itemHeaders = ["Description", "Quantity", "Unit Price", "Amount", "Category"];
-    const items = parseLineItems(exp.lineItems);
-    const itemRows = items.map((item: any) => {
-      const itemName = item.description || item.name || item.category || "Unknown Item";
-      const q = item.quantity !== undefined && item.quantity !== null ? item.quantity : 1;
-      const up = item.unit_price !== undefined && item.unit_price !== null ? item.unit_price : (item.amount || item.total_price || 0);
-      const p = item.amount !== undefined && item.amount !== null ? item.amount : item.total_price;
-      const cat = item.category || exp.category || "Other";
-      
-      return [
-        `"${itemName.replace(/"/g, '""')}"`,
-        q,
-        up,
-        p !== undefined && p !== null ? p : "",
-        `"${cat}"`
-      ].join(",");
-    });
-
-    const csvContent = [
-      "# Invoice Summary",
-      summaryHeaders.join(","),
-      summaryRow,
-      "",
-      "# Line Items",
-      itemHeaders.join(","),
-      ...itemRows
-    ].join("\n");
-
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    const vendorSlug = exp.vendor.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-    const dateStr = exp.date;
-    const shortId = exp.id.slice(0, 6);
-    
-    link.href = URL.createObjectURL(blob);
-    link.download = `${vendorSlug}-${dateStr}-${shortId}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(link.href);
-    addToast("Audit data exported as CSV.", "success");
-  };
-
-  const exportCSV = () => {
-    const headers = [
-      "ID", "Vendor", "Date", "Currency", "Payment Method", "Confidence", 
-      "Discrepancy", "Discrepancy Reason", 
-      "Total Amount", "Subtotal", "Tax", "Discount",
-      "Item Name", "Item Quantity", "Item Unit Price", "Item Total Price", "Item Category"
-    ];
-    
-    const rows: string[] = [];
-    
-    processedExpenses.forEach(exp => {
-      const baseRow = [
-        exp.id,
+    try {
+      const summaryHeaders = ["Vendor", "Date", "Currency", "Subtotal", "Tax", "Discount", "Total", "Discrepancy", "Discrepancy Reason", "Confidence"];
+      const summaryRow = [
         `"${exp.vendor.replace(/"/g, '""')}"`,
         `"${exp.date}"`,
         exp.currency || "USD",
-        `"${exp.paymentMethod || "Unknown"}"`,
-        exp.confidence !== null ? Math.round((exp.confidence || 0) * 100) + '%' : "",
+        fmt(exp.subtotal),
+        fmt(exp.taxAmount),
+        fmt(exp.discount),
+        fmt(exp.amount),
         exp.discrepancy || "no",
         `"${(exp.discrepancyReason || "").replace(/"/g, '""')}"`,
-        exp.amount.toFixed(2),
-        exp.subtotal !== null ? exp.subtotal.toFixed(2) : "",
-        exp.taxAmount !== null ? exp.taxAmount.toFixed(2) : "",
-        exp.discount !== null ? exp.discount.toFixed(2) : ""
-      ];
+        fmt(exp.confidence)
+      ].join(",");
 
+      const itemHeaders = ["Description", "Quantity", "Unit Price", "Amount", "Category"];
       const items = parseLineItems(exp.lineItems);
-      if (items.length === 0) {
-         rows.push([...baseRow, "", "", "", "", `"${exp.category || "Other"}"`].join(","));
-      } else {
-         items.forEach((item: any) => {
-            const itemName = item.description || item.name || item.category || "Unknown Item";
-            const q = item.quantity;
-            const up = item.unit_price;
-            const p = item.amount !== undefined && item.amount !== null ? item.amount : item.total_price;
-            const cat = item.category || exp.category || "Other";
-            
-            rows.push([...baseRow, 
-              `"${itemName.replace(/"/g, '""')}"`,
-              q !== undefined && q !== null ? q : "",
-              up !== undefined && up !== null ? up : "",
-              p !== undefined && p !== null ? p : "",
-              `"${cat}"`
-            ].join(","));
-         });
-      }
-    });
+      const itemRows = items.map((item: any) => {
+        const itemName = item.description || item.name || item.category || "Unknown Item";
+        const q = item.quantity !== undefined && item.quantity !== null ? item.quantity : 1;
+        const up = item.unit_price !== undefined && item.unit_price !== null ? item.unit_price : (item.amount || item.total_price || 0);
+        const p = item.amount !== undefined && item.amount !== null ? item.amount : item.total_price;
+        const cat = item.category || exp.category || "Other";
+        
+        return [
+          `"${itemName.replace(/"/g, '""')}"`,
+          q,
+          fmt(up),
+          fmt(p),
+          `"${cat}"`
+        ].join(",");
+      });
 
-    const csvContent = [headers.join(","), ...rows].join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `auditor-ai-export-${new Date().toISOString().split("T")[0]}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(link.href);
-    addToast(`Exported ${processedExpenses.length} records.`, "success");
+      const csvContent = [
+        "# Invoice Summary",
+        summaryHeaders.join(","),
+        summaryRow,
+        "",
+        "# Line Items",
+        itemHeaders.join(","),
+        ...itemRows
+      ].join("\n");
+
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      const vendorSlug = exp.vendor.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+      const dateStr = exp.date;
+      const shortId = exp.id.slice(0, 6);
+      
+      link.href = URL.createObjectURL(blob);
+      link.download = `${vendorSlug}-${dateStr}-${shortId}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(link.href);
+      addToast("Audit data exported as CSV.", "success");
+    } catch (err: any) {
+      console.error('CSV Export failed:', err);
+      addToast(`Export failed: ${err.message || 'Unknown error'}`, "error");
+    }
+  };
+
+  const exportCSV = () => {
+    try {
+      const headers = [
+        "ID", "Vendor", "Date", "Currency", "Payment Method", "Confidence", 
+        "Discrepancy", "Discrepancy Reason", 
+        "Total Amount", "Subtotal", "Tax", "Discount",
+        "Item Name", "Item Quantity", "Item Unit Price", "Item Total Price", "Item Category"
+      ];
+      
+      const rows: string[] = [];
+      
+      processedExpenses.forEach(exp => {
+        const baseRow = [
+          exp.id,
+          `"${exp.vendor.replace(/"/g, '""')}"`,
+          `"${exp.date}"`,
+          exp.currency || "USD",
+          `"${exp.paymentMethod || "Unknown"}"`,
+          exp.confidence !== null ? Math.round((exp.confidence || 0) * 100) + '%' : "",
+          exp.discrepancy || "no",
+          `"${(exp.discrepancyReason || "").replace(/"/g, '""')}"`,
+          fmt(exp.amount),
+          fmt(exp.subtotal),
+          fmt(exp.taxAmount),
+          fmt(exp.discount)
+        ];
+
+        const items = parseLineItems(exp.lineItems);
+        if (items.length === 0) {
+           rows.push([...baseRow, "", "", "", "", `"${exp.category || "Other"}"`].join(","));
+        } else {
+           items.forEach((item: any) => {
+              const itemName = item.description || item.name || item.category || "Unknown Item";
+              const q = item.quantity;
+              const up = item.unit_price;
+              const p = item.amount !== undefined && item.amount !== null ? item.amount : item.total_price;
+              const cat = item.category || exp.category || "Other";
+              
+              rows.push([...baseRow, 
+                `"${itemName.replace(/"/g, '""')}"`,
+                q !== undefined && q !== null ? q : "",
+                fmt(up),
+                fmt(p),
+                `"${cat}"`
+              ].join(","));
+           });
+        }
+      });
+
+      const csvContent = [headers.join(","), ...rows].join("\n");
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `auditor-ai-export-${new Date().toISOString().split("T")[0]}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(link.href);
+      addToast(`Exported ${processedExpenses.length} records.`, "success");
+    } catch (err: any) {
+      console.error('Bulk Export failed:', err);
+      // Fallback to alert as requested by user
+      alert(`Export failed: ${err.message || 'Unknown error'}. Please try again or contact support.`);
+    }
   };
 
   const parseLineItems = (jsonString: string | null) => {

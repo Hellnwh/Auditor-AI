@@ -159,7 +159,7 @@ import cors from "cors";
 
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT || 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   app.use(cors({ origin: process.env.FRONTEND_ORIGIN || true }));
   app.use(express.json({ limit: "25mb" }));
