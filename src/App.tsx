@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { UploadCloud, Receipt, Calendar, DollarSign, AlertCircle, Loader2, Trash2, Edit2, Check, X, Search, ChevronUp, ChevronDown, Download, AlertTriangle, Tag, ArrowLeft, User as UserIcon, Star, Mail, FileText, Filter, Zap } from "lucide-react";
+import { UploadCloud, Receipt, Calendar, DollarSign, AlertCircle, Loader2, Trash2, Edit2, Check, X, Search, ChevronUp, ChevronDown, Download, AlertTriangle, Tag, ArrowLeft, User as UserIcon, Star, Mail, FileText, Filter, Zap, MoreVertical, Camera } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import * as xlsx from "xlsx";
 import { Routes, Route, useNavigate, Navigate, Link, useLocation } from "react-router-dom";
@@ -33,6 +33,9 @@ const formatCurrency = (amount: number, currency: string | null) => {
 
 export function DashboardContent({ expenses, authFetch, logout, addToast, updateToast }: any) {
   const [files, setFiles] = useState<File[]>([]);
+  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+  const [showPreview, setShowPreview] = useState(false);
+  const cameraInputRef = React.useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
 
@@ -106,7 +109,43 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setError("");
-    setFiles(Array.from(e.target.files || []));
+    const newFiles: File[] = Array.from(e.target.files || []);
+    if (newFiles.length === 0) return;
+
+    // Cleanup old previews
+    previewUrls.forEach(url => URL.revokeObjectURL(url));
+
+    const urls = newFiles
+      .filter((f: File) => f.type.startsWith('image/'))
+      .map((f: File) => URL.createObjectURL(f));
+    
+    setFiles(newFiles);
+    setPreviewUrls(urls);
+    if (urls.length > 0) {
+      setShowPreview(true);
+    }
+  };
+
+  const handleCameraCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setError("");
+    const newFile: File | null = e.target.files?.[0] || null;
+    if (!newFile) return;
+
+    // Cleanup old previews
+    previewUrls.forEach(url => URL.revokeObjectURL(url));
+
+    const url = URL.createObjectURL(newFile);
+    setFiles([newFile]);
+    setPreviewUrls([url]);
+    setShowPreview(true);
+  };
+
+  const resetUpload = () => {
+    previewUrls.forEach(url => URL.revokeObjectURL(url));
+    setFiles([]);
+    setPreviewUrls([]);
+    setShowPreview(false);
+    setUploadConfirm(false);
   };
 
   const handleUploadClick = () => {
@@ -199,11 +238,17 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
           let fileToProcess = file;
           if (file.type.startsWith("image/")) {
              const options = {
-               maxSizeMB: 1,
-               maxWidthOrHeight: 1920,
+               maxSizeMB: 1.5,
+               maxWidthOrHeight: 2000,
                useWebWorker: true,
+               fileType: "image/jpeg",
+               initialQuality: 0.85
              };
-             fileToProcess = await imageCompression(file, options);
+             try {
+               fileToProcess = await imageCompression(file, options);
+             } catch (err) {
+               console.warn("Compression failed, using original", err);
+             }
           }
           base64Data = await fileToBase64(fileToProcess);
         }
@@ -218,6 +263,16 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
         });
         
         console.log("Extracted Data:", parsed);
+
+        // Low confidence check
+        if (parsed.confidence && parsed.confidence < 0.5) {
+          addToast(`Low confidence for ${file.name}. Ensure good lighting and focus.`, "warning");
+          // We still save it, but maybe we should flag it or prompt to retake?
+          // The request says "surface a friendly message... Then offer the Re-take button again"
+          // This implies maybe we shouldn't save yet if confidence is too low?
+          // Or save and notify. Let's save but show the message as requested.
+          setError("This photo was hard to read. Try again with better lighting, less glare, and the receipt fully in frame.");
+        }
 
         // 3. Save to Firebase
         const { doc, collection, setDoc, getDoc, updateDoc, serverTimestamp } = await import('firebase/firestore');
@@ -412,7 +467,7 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
       });
     }
     return result;
-  }, [expenses, sortConfig, filterVendor, filterMinAmount, filterMaxAmount, filterCategory]);
+  }, [expenses, sortConfig, filterVendor, filterMinAmount, filterMaxAmount, filterCategory, filterDiscrepancy, filterStartDate, filterEndDate]);
 
   const currencyTotals = useMemo(() => {
     const totals: Record<string, number> = {};
@@ -445,6 +500,93 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
     } catch {
       return dateStr;
     }
+  };
+
+  const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (activeMenuId && !(e.target as Element).closest('.row-actions-menu')) {
+        setActiveMenuId(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [activeMenuId]);
+
+  const exportSingleJSON = (exp: Expense) => {
+    const dataStr = JSON.stringify(exp, null, 2);
+    const blob = new Blob([dataStr], { type: "application/json" });
+    const link = document.createElement("a");
+    const vendorSlug = exp.vendor.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    const dateStr = exp.date;
+    const shortId = exp.id.slice(0, 6);
+    
+    link.href = URL.createObjectURL(blob);
+    link.download = `${vendorSlug}-${dateStr}-${shortId}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+    addToast("Audit data exported as JSON.", "success");
+  };
+
+  const exportSingleCSV = (exp: Expense) => {
+    const summaryHeaders = ["Vendor", "Date", "Currency", "Subtotal", "Tax", "Discount", "Total", "Discrepancy", "Discrepancy Reason", "Confidence"];
+    const summaryRow = [
+      `"${exp.vendor.replace(/"/g, '""')}"`,
+      `"${exp.date}"`,
+      exp.currency || "USD",
+      exp.subtotal !== null ? exp.subtotal.toFixed(2) : "0.00",
+      exp.taxAmount !== null ? exp.taxAmount.toFixed(2) : "0.00",
+      exp.discount !== null ? exp.discount.toFixed(2) : "0.00",
+      exp.amount.toFixed(2),
+      exp.discrepancy || "no",
+      `"${(exp.discrepancyReason || "").replace(/"/g, '""')}"`,
+      exp.confidence !== null ? exp.confidence.toFixed(2) : "0.00"
+    ].join(",");
+
+    const itemHeaders = ["Description", "Quantity", "Unit Price", "Amount", "Category"];
+    const items = parseLineItems(exp.lineItems);
+    const itemRows = items.map((item: any) => {
+      const itemName = item.description || item.name || item.category || "Unknown Item";
+      const q = item.quantity !== undefined && item.quantity !== null ? item.quantity : 1;
+      const up = item.unit_price !== undefined && item.unit_price !== null ? item.unit_price : (item.amount || item.total_price || 0);
+      const p = item.amount !== undefined && item.amount !== null ? item.amount : item.total_price;
+      const cat = item.category || exp.category || "Other";
+      
+      return [
+        `"${itemName.replace(/"/g, '""')}"`,
+        q,
+        up,
+        p !== undefined && p !== null ? p : "",
+        `"${cat}"`
+      ].join(",");
+    });
+
+    const csvContent = [
+      "# Invoice Summary",
+      summaryHeaders.join(","),
+      summaryRow,
+      "",
+      "# Line Items",
+      itemHeaders.join(","),
+      ...itemRows
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    const vendorSlug = exp.vendor.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    const dateStr = exp.date;
+    const shortId = exp.id.slice(0, 6);
+    
+    link.href = URL.createObjectURL(blob);
+    link.download = `${vendorSlug}-${dateStr}-${shortId}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+    addToast("Audit data exported as CSV.", "success");
   };
 
   const exportCSV = () => {
@@ -499,11 +641,12 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `expenses_gemini_${new Date().toISOString().split("T")[0]}.csv`;
+    link.download = `auditor-ai-export-${new Date().toISOString().split("T")[0]}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(link.href);
+    addToast(`Exported ${processedExpenses.length} records.`, "success");
   };
 
   const parseLineItems = (jsonString: string | null) => {
@@ -515,6 +658,22 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
       return [];
     }
   };
+
+  const [hintIndex, setHintIndex] = useState(0);
+  const hints = [
+    "Lay receipt flat on a dark surface",
+    "Avoid shadows and glare",
+    "Capture the entire receipt including the total",
+    "Ensure all text is in sharp focus",
+    "Align the receipt vertically for best OCR"
+  ];
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setHintIndex((prev) => (prev + 1) % hints.length);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
@@ -605,41 +764,80 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
               </div>
               <p className="text-xs text-slate-500 mb-6 font-medium leading-relaxed">Scan JPG, PNG, WebP, PDF invoices, or Excel spreadsheets instantly.</p>
 
-              <label className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50 hover:bg-slate-50 cursor-pointer transition-all group relative mb-4 p-4 text-center">
-                {files.length > 0 ? (
-                  <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="text-center w-full">
-                    <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center mx-auto mb-3 text-blue-600 relative">
-                       <FileText className="h-6 w-6" />
-                       {files.length > 1 && (
-                         <span className="absolute -top-2 -right-2 bg-blue-600 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full font-bold shadow-sm">{files.length}</span>
-                       )}
-                    </div>
-                    <span className="text-xs font-bold text-slate-900 break-all line-clamp-2 px-2 leading-tight">
-                      {files.length === 1 ? files[0].name : `${files.length} documents selected`}
-                    </span>
-                    <button onClick={(e) => { e.preventDefault(); setFiles([]); }} className="mt-2 text-[10px] font-bold text-red-500 hover:text-red-600 underline">Remove</button>
-                  </motion.div>
-                ) : (
-                  <>
-                    <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform">
-                      <UploadCloud className="h-6 w-6 text-slate-400 group-hover:text-blue-500 transition-colors" />
-                    </div>
-                    <span className="text-xs font-bold text-slate-600 group-hover:text-slate-900">Click or drag document(s)</span>
-                  </>
-                )}
+              <div className="flex flex-col space-y-3 mb-6">
+                <button 
+                  onClick={() => cameraInputRef.current?.click()}
+                  className="w-full h-24 sm:h-auto flex flex-col sm:flex-row items-center justify-center py-4 px-4 border-2 border-slate-900 rounded-2xl text-xs sm:text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 transition-all shadow-lg shadow-slate-200"
+                >
+                  <Camera className="w-6 h-6 sm:w-5 sm:h-5 sm:mr-3 mb-2 sm:mb-0" />
+                  Capture with Camera
+                </button>
+
+                <label className="flex flex-col items-center justify-center w-full h-20 sm:h-24 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50 hover:bg-slate-50 cursor-pointer transition-all group relative p-4 text-center">
+                  <div className="flex items-center space-x-2">
+                    <UploadCloud className="h-4 w-4 text-slate-400 group-hover:text-blue-500 transition-colors" />
+                    <span className="text-[10px] sm:text-[11px] font-bold text-slate-600 group-hover:text-slate-900 leading-tight">Upload Document</span>
+                  </div>
+                  <input
+                    type="file"
+                    multiple
+                    className="hidden"
+                    accept="image/jpeg,image/png,image/webp,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
+                    onChange={handleFileChange}
+                  />
+                </label>
+
                 <input
                   type="file"
-                  multiple
+                  accept="image/*"
+                  capture="environment"
+                  onChange={handleCameraCapture}
                   className="hidden"
-                  accept="image/jpeg,image/png,image/webp,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
-                  onChange={handleFileChange}
+                  ref={cameraInputRef}
                 />
-              </label>
+              </div>
+
+              <div className="mb-6 p-3 bg-indigo-50/30 rounded-xl border border-indigo-100 flex items-start space-x-3">
+                <div className="w-6 h-6 bg-white rounded-lg flex items-center justify-center text-indigo-500 shadow-sm shrink-0 mt-0.5">
+                  <Zap className="w-3.5 h-3.5" />
+                </div>
+                <div>
+                  <p className="text-[10px] font-black text-indigo-700 uppercase tracking-widest mb-1">Audit Tip</p>
+                  <motion.p 
+                    key={hintIndex}
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-[11px] text-indigo-600 font-medium leading-tight"
+                  >
+                    {hints[hintIndex]}
+                  </motion.p>
+                </div>
+              </div>
+
+              {files.length > 0 && !showPreview && (
+                <div className="mb-4 p-3 bg-blue-50 rounded-xl border border-blue-100 flex items-center justify-between">
+                  <div className="flex items-center space-x-3 overflow-hidden">
+                    <FileText className="w-4 h-4 text-blue-600 shrink-0" />
+                    <span className="text-[11px] font-bold text-blue-800 truncate">{files.length === 1 ? files[0].name : `${files.length} selected`}</span>
+                  </div>
+                  <button onClick={resetUpload} className="text-[10px] font-bold text-red-500 hover:text-red-700">Clear</button>
+                </div>
+              )}
 
               {error && (
-                <div className="flex items-center space-x-2 text-red-600 bg-red-50 p-3 rounded-xl text-xs mb-4 border border-red-100">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <p className="font-bold leading-tight">{error}</p>
+                <div className="flex flex-col space-y-2 bg-red-50 p-4 rounded-xl text-xs mb-4 border border-red-100">
+                  <div className="flex items-center space-x-2 text-red-600">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <p className="font-bold leading-tight">{error}</p>
+                  </div>
+                  {error.includes("lighting") && (
+                    <button 
+                      onClick={resetUpload}
+                      className="mt-2 w-full py-2 bg-white border border-red-200 text-red-600 text-[10px] font-bold rounded-lg hover:bg-red-100 transition-colors uppercase tracking-widest"
+                    >
+                      Retry / Re-take
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -884,26 +1082,63 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
                              <div className="text-sm font-black text-slate-900 leading-none">{formatCurrency(exp.amount, exp.currency)}</div>
                              <div className="text-[10px] text-slate-400 font-bold mt-1">Tax: {formatCurrency(exp.taxAmount || 0, exp.currency)}</div>
                           </td>
-                          <td className="px-6 py-5">
-                            <div className="flex items-center justify-end space-x-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+                          <td className="px-6 py-5 text-right relative overflow-visible">
+                            <div className="flex items-center justify-end space-x-1">
                                <button 
-                                onClick={() => setViewingLineItems(exp)}
-                                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="View Details"
+                                onClick={() => setActiveMenuId(activeMenuId === exp.id ? null : exp.id)}
+                                className={`p-2 rounded-lg transition-all ${activeMenuId === exp.id ? 'bg-slate-100 text-slate-900' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
+                                title="Actions"
                                >
-                                 <FileText className="w-4 h-4" />
+                                 <MoreVertical className="w-4 h-4" />
                                </button>
-                               <button 
-                                onClick={() => startEdit(exp)}
-                                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors" title="Edit"
-                               >
-                                 <Edit2 className="w-4 h-4" />
-                               </button>
-                               <button 
-                                onClick={() => setExpenseToDelete(exp.id)}
-                                className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Delete"
-                               >
-                                 <Trash2 className="w-4 h-4" />
-                               </button>
+
+                               <AnimatePresence>
+                                 {activeMenuId === exp.id && (
+                                   <motion.div 
+                                     initial={{ opacity: 0, scale: 0.9, y: 5 }}
+                                     animate={{ opacity: 1, scale: 1, y: 0 }}
+                                     exit={{ opacity: 0, scale: 0.9, y: 5 }}
+                                     className="absolute right-6 top-12 w-48 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 py-2 row-actions-menu overflow-hidden"
+                                   >
+                                     <button 
+                                      onClick={() => { setViewingLineItems(exp); setActiveMenuId(null); }}
+                                      className="w-full flex items-center px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+                                     >
+                                       <FileText className="w-3.5 h-3.5 mr-3 text-blue-500" />
+                                       View Details
+                                     </button>
+                                     <button 
+                                      onClick={() => { exportSingleCSV(exp); setActiveMenuId(null); }}
+                                      className="w-full flex items-center px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+                                     >
+                                       <Download className="w-3.5 h-3.5 mr-3 text-emerald-500" />
+                                       Export as CSV
+                                     </button>
+                                     <button 
+                                      onClick={() => { exportSingleJSON(exp); setActiveMenuId(null); }}
+                                      className="w-full flex items-center px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+                                     >
+                                       <Zap className="w-3.5 h-3.5 mr-3 text-amber-500" />
+                                       Export as JSON
+                                     </button>
+                                     <div className="h-px bg-slate-100 my-1" />
+                                     <button 
+                                      onClick={() => { startEdit(exp); setActiveMenuId(null); }}
+                                      className="w-full flex items-center px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+                                     >
+                                       <Edit2 className="w-3.5 h-3.5 mr-3 text-slate-400" />
+                                       Edit Record
+                                     </button>
+                                     <button 
+                                      onClick={() => { setExpenseToDelete(exp.id); setActiveMenuId(null); }}
+                                      className="w-full flex items-center px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50 transition-colors"
+                                     >
+                                       <Trash2 className="w-3.5 h-3.5 mr-3" />
+                                       Delete Entry
+                                     </button>
+                                   </motion.div>
+                                 )}
+                               </AnimatePresence>
                             </div>
                           </td>
                         </motion.tr>
@@ -919,6 +1154,85 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
           </div>
         </div>
       </main>
+
+      {showPreview && previewUrls.length > 0 && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[60] flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[90vh]"
+          >
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-white sticky top-0 z-10">
+              <div>
+                <h3 className="text-xl font-black text-slate-900 tracking-tight">Review Audit Document</h3>
+                <p className="text-sm text-slate-500 font-medium">Confirm visibility for high-precision extraction</p>
+              </div>
+              <button 
+                onClick={resetUpload}
+                className="p-2 hover:bg-slate-100 rounded-xl text-slate-400 transition-all"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
+              <div className="space-y-6">
+                {previewUrls.map((url, idx) => (
+                  <div key={idx} className="relative rounded-2xl overflow-hidden border-4 border-white shadow-xl bg-white group">
+                    <img 
+                      src={url} 
+                      alt={`Preview ${idx + 1}`} 
+                      className="w-full h-auto object-contain max-h-[60vh] mx-auto" 
+                    />
+                    <div className="absolute top-4 right-4 bg-slate-900/80 backdrop-blur text-white px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg">
+                      Draft {idx + 1}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center text-center">
+                  <div className="w-8 h-8 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center mb-2">
+                    <Check className="w-4 h-4" />
+                  </div>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Text Quality</p>
+                  <p className="text-xs text-slate-600 font-bold">Sharp Focus</p>
+                </div>
+                <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center text-center">
+                  <div className="w-8 h-8 bg-amber-50 text-amber-600 rounded-lg flex items-center justify-center mb-2">
+                    <Zap className="w-4 h-4" />
+                  </div>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Visibility</p>
+                  <p className="text-xs text-slate-600 font-bold">No Glare</p>
+                </div>
+                <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center text-center">
+                  <div className="w-8 h-8 bg-indigo-50 text-indigo-600 rounded-lg flex items-center justify-center mb-2">
+                    <FileText className="w-4 h-4" />
+                  </div>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Coverage</p>
+                  <p className="text-xs text-slate-600 font-bold">Full Frame</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 bg-white border-t border-slate-100 flex flex-col sm:flex-row gap-3">
+              <button 
+                onClick={resetUpload}
+                className="flex-1 py-4 px-6 border-2 border-slate-200 text-slate-600 font-bold rounded-2xl hover:bg-slate-50 transition-all text-sm flex items-center justify-center"
+              >
+                <Camera className="w-4 h-4 mr-2" /> Re-take / Clear
+              </button>
+              <button 
+                onClick={() => { setShowPreview(false); setUploadConfirm(true); }}
+                className="flex-[2] py-4 px-6 bg-slate-900 text-white font-bold rounded-2xl hover:bg-slate-800 transition-all text-sm flex items-center justify-center shadow-xl shadow-slate-200"
+              >
+                <Check className="w-4 h-4 mr-2" /> Looks Good — Audit This
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
 
       {uploadConfirm && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
