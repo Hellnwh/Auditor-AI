@@ -47,8 +47,8 @@ export default function Analytics({ expenses }: { expenses: any[] }) {
               <ArrowLeft className="w-5 h-5 text-slate-600" />
             </button>
             <div>
-              <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight">AI Intelligence</h1>
-              <p className="text-slate-500 font-medium text-sm mt-1">Multi-vector analysis of extracted ledger data.</p>
+              <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight">Analytics</h1>
+              <p className="text-slate-500 font-medium text-sm mt-1">Insights from your audited receipts.</p>
             </div>
           </div>
         </header>

@@ -26,8 +26,7 @@ export default function Footer() {
 
       <div className="text-[10px] font-bold text-slate-300 uppercase tracking-[0.2em] leading-relaxed max-w-[200px]">
         &copy; {new Date().getFullYear()} Auditor AI. <br />
-        All rights reversed. <br />
-        Intelligence with accountability.
+        All rights reserved.
       </div>
 
       <FeedbackDialog isOpen={feedbackOpen} onClose={() => setFeedbackOpen(false)} />

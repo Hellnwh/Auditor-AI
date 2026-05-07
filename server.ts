@@ -95,7 +95,8 @@ const SYSTEM_INSTRUCTION = `You are an Elite Financial Auditor. Your job is to e
 EXTRACTION RULES
 - Extract: vendor, date (YYYY-MM-DD, or "Unknown" if illegible), currency (ISO 4217 code such as INR, USD, EUR), payment_method (cash/card/UPI/bank transfer/unknown), and an items array.
 - For each item extract: description (string), quantity (number, default 1 if not stated), unit_price (number), amount (number = quantity * unit_price), category (string from the allowed list). When a quantity column is present, use it; otherwise infer 1.
-- Pick the SINGLE most specific category from this list. Do NOT default to 'Other' unless absolutely no other category fits. Office stationery, computer hardware, packaging, raw materials → 'Goods'. Coffee, food, restaurants → 'Food & Beverage'. Hosting, electricity, internet → 'Utilities'. Lawyers, accountants, consulting → 'Professional Fees'. Allowed: "Goods", "Services", "Food & Beverage", "Travel", "Utilities", "Professional Fees", "Tax", "Shipping", "Other".
+- Pick the SINGLE most specific category for each item from this list: "Goods", "Services", "Food & Beverage", "Travel", "Utilities", "Professional Fees", "Tax", "Shipping", "Other". Do NOT default to 'Other' unless absolutely no other category fits. Office stationery, computer hardware, packaging, raw materials → 'Goods'. Coffee, food, restaurants → 'Food & Beverage'. Hosting, electricity, internet → 'Utilities'. Lawyers, accountants, consulting → 'Professional Fees'.
+- Extract dominant_category (string): Calculate the category with the highest total amount from the items array. If there is a tie, pick the one that appears first alphabetically.
 - All monetary fields (amount, subtotal, tax, discount, total_amount) must be numbers, not strings. Use 0 if a field is absent.
 
 SPREADSHEET INPUT
@@ -126,6 +127,7 @@ const RESPONSE_SCHEMA = {
     date: { type: Type.STRING, description: 'YYYY-MM-DD or "Unknown"' },
     currency: { type: Type.STRING, description: 'ISO 4217 code, e.g. INR, USD' },
     payment_method: { type: Type.STRING, description: 'cash/card/UPI/bank transfer/unknown' },
+    dominant_category: { type: Type.STRING, description: 'The most common or dominant category by amount' },
     items: {
       type: Type.ARRAY,
       items: {
@@ -149,7 +151,7 @@ const RESPONSE_SCHEMA = {
     confidence: { type: Type.NUMBER, description: '0 to 1' },
   },
   required: [
-    'vendor', 'date', 'currency', 'payment_method', 'items',
+    'vendor', 'date', 'currency', 'payment_method', 'dominant_category', 'items',
     'subtotal', 'tax', 'discount', 'total_amount',
     'discrepancy', 'confidence',
   ],

@@ -124,7 +124,7 @@ export default function Settings({ user, logout, refreshUser, addToast }: { user
     },
     {
       name: 'PRO',
-      price: '$9.99',
+      price: '₹500',
       description: 'Professional auditing for SMBs.',
       features: ['50 Monthly Scans', 'Advanced Math Audit', 'Team Sharing', 'Line Item Extraction', 'Priority Support'],
       active: user?.plan === 'PRO'
@@ -154,8 +154,8 @@ export default function Settings({ user, logout, refreshUser, addToast }: { user
               <ArrowLeft className="w-5 h-5 text-slate-600" />
             </button>
             <div>
-              <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight">Account & Governance</h1>
-              <p className="text-slate-500 font-medium text-sm mt-1">Plan Management & Security</p>
+              <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight">Account Settings</h1>
+              <p className="text-slate-500 font-medium text-sm mt-1">User Profile & Plan</p>
             </div>
           </div>
         </header>
@@ -180,7 +180,7 @@ export default function Settings({ user, logout, refreshUser, addToast }: { user
                         }}
                         className="text-[10px] font-black uppercase text-blue-600 hover:underline tracking-widest"
                       >
-                        {editing ? 'Cancel' : 'Edit Intelligence'}
+                        {editing ? 'Cancel' : 'Edit Profile'}
                       </button>
                    </div>
                    
@@ -196,7 +196,7 @@ export default function Settings({ user, logout, refreshUser, addToast }: { user
                            />
                         </div>
                         <div>
-                           <label className="block text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Email Archive</label>
+                           <label className="block text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Email</label>
                            <input 
                              type="email" 
                              value={form.email} 
@@ -240,7 +240,7 @@ export default function Settings({ user, logout, refreshUser, addToast }: { user
                           onClick={handleUpdate}
                           className="w-full py-3 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 transition-all flex items-center justify-center shadow-lg shadow-blue-100"
                         >
-                          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Save className="w-3.5 h-3.5 mr-2" /> Commit Identity</>}
+                          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Save className="w-3.5 h-3.5 mr-2" /> Save Profile</>}
                         </button>
                      </div>
                    ) : (
@@ -261,8 +261,8 @@ export default function Settings({ user, logout, refreshUser, addToast }: { user
                              TEL: {user.phoneNumber}
                           </div>
                         )}
-                        <button onClick={logout} className="w-full py-3 bg-red-50 text-red-600 rounded-xl text-xs font-bold hover:bg-red-100 transition-all mt-4">Sign Out Archive</button>
-                     </div>
+                        <button onClick={logout} className="w-full py-3 bg-red-50 text-red-600 rounded-xl text-xs font-bold hover:bg-red-100 transition-all mt-4">Sign Out</button>
+                      </div>
                    )}
                 </div>
 
@@ -273,7 +273,7 @@ export default function Settings({ user, logout, refreshUser, addToast }: { user
                      {user?.plan === 'FREE' ? `${user?.monthlyScanCount || 0} / 5` : 'Unlimited'} 
                      <span className="text-sm text-slate-400 ml-2">Scans Used</span>
                    </div>
-                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Status: {user?.plan} LICENSE ACTIVE</p>
+                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Status: {user?.plan} license</p>
                    {user?.plan === 'FREE' && user?.quotaResetDate && (
                      <p className="text-[10px] font-bold text-blue-400 uppercase tracking-tight mt-1">
                        Resets: {new Date(user.quotaResetDate.seconds ? user.quotaResetDate.seconds * 1000 : user.quotaResetDate).toLocaleDateString()}
@@ -320,7 +320,7 @@ export default function Settings({ user, logout, refreshUser, addToast }: { user
 
              <div className="md:col-span-2 space-y-6">
                 <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center">
-                  <CreditCard className="w-4 h-4 mr-2 text-blue-600" /> Tier Governance
+                  <CreditCard className="w-4 h-4 mr-2 text-blue-600" /> Your Plan
                 </h3>
                 
                 <div className="space-y-4">
@@ -350,10 +350,20 @@ export default function Settings({ user, logout, refreshUser, addToast }: { user
 
                         {!plan.active && (
                           <button 
-                            onClick={() => alert(`Upgrading to ${plan.name}... (Stripe Sandbox Active)`)}
+                            onClick={() => {
+                              if (plan.name === 'PRO') {
+                                navigate('/');
+                                setTimeout(() => {
+                                  const el = document.getElementById('pricing');
+                                  if (el) el.scrollIntoView({ behavior: 'smooth' });
+                                }, 100);
+                              } else {
+                                window.location.href = 'mailto:[YOUR EMAIL]?subject=Enterprise inquiry';
+                              }
+                            }}
                             className="w-full py-3 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-all active:scale-[0.98] shadow-lg shadow-slate-200"
                           >
-                            Switch to {plan.name} Governance
+                            {plan.name === 'PRO' ? 'Join Waitlist' : 'Talk to Founder'}
                           </button>
                         )}
                      </div>

@@ -170,6 +170,43 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
   };
 
   const [quotaExceededInfo, setQuotaExceededInfo] = useState<{ resetDate: string } | null>(null);
+  const [duplicateWarning, setDuplicateWarning] = useState<{ file: File, data: any, existingDate: string } | null>(null);
+
+  async function saveExpense(parsed: any, file: File) {
+    const { doc, collection, setDoc, serverTimestamp } = await import('firebase/firestore');
+    const { db } = await import('./lib/firebase');
+    const { handleFirestoreError, OperationType } = await import('./lib/firestoreUtils');
+
+    if (user) {
+      const expensePath = `users/${user.id}/expenses`;
+      const expenseRef = doc(collection(db, 'users', user.id, 'expenses'));
+      const expenseData = {
+        vendor: parsed.vendor || "Unknown",
+        date: parsed.date || "Unknown",
+        amount: parseFloat(parsed.total_amount) || 0,
+        subtotal: parseFloat(parsed.subtotal) || null,
+        taxAmount: parseFloat(parsed.tax) || null,
+        currency: parsed.currency || "INR",
+        category: parsed.dominant_category || parsed.category || "Other",
+        paymentMethod: parsed.payment_method || "Unknown",
+        lineItems: JSON.stringify(parsed.items || []),
+        discrepancy: parsed.discrepancy || "no",
+        discrepancyReason: parsed.discrepancy_reason || parsed.discrepancyReason || null,
+        confidence: parsed.confidence || 0,
+        rawText: JSON.stringify(parsed),
+        createdAt: serverTimestamp()
+      };
+
+      try {
+        await setDoc(expenseRef, expenseData);
+        return true;
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, `${expensePath}/${expenseRef.id}`);
+        return false;
+      }
+    }
+    return false;
+  }
 
   async function confirmUpload() {
     if (files.length === 0) return;
@@ -269,38 +306,34 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
           setError("This photo was hard to read. Try again with better lighting, less glare, and the receipt fully in frame.");
         }
 
-        // 3. Save to Firebase
-        const { doc, collection, setDoc, serverTimestamp } = await import('firebase/firestore');
+        // 3. Duplicate Detection
+        const { collection, query, where, getDocs } = await import('firebase/firestore');
         const { db } = await import('./lib/firebase');
-        const { handleFirestoreError, OperationType } = await import('./lib/firestoreUtils');
-
-        if (user) {
-          const expensePath = `users/${user.id}/expenses`;
-          const expenseRef = doc(collection(db, 'users', user.id, 'expenses'));
-          const expenseData = {
-            vendor: parsed.vendor || "Unknown",
-            date: parsed.date || "Unknown",
-            amount: parseFloat(parsed.total_amount) || 0,
-            subtotal: parseFloat(parsed.subtotal) || null,
-            taxAmount: parseFloat(parsed.tax) || null,
-            currency: parsed.currency || "INR",
-            category: parsed.category || "Other",
-            paymentMethod: parsed.payment_method || "Unknown",
-            lineItems: JSON.stringify(parsed.items || []),
-            discrepancy: parsed.discrepancy || "no",
-            discrepancyReason: parsed.discrepancy_reason || parsed.discrepancyReason || null,
-            confidence: parsed.confidence || 0,
-            rawText: JSON.stringify(parsed),
-            createdAt: serverTimestamp()
-          };
-
-          try {
-            await setDoc(expenseRef, expenseData);
-          } catch (err) {
-            handleFirestoreError(err, OperationType.WRITE, `${expensePath}/${expenseRef.id}`);
-          }
+        
+        const q = query(
+          collection(db, 'users', user.id, 'expenses'),
+          where('vendor', '==', parsed.vendor || "Unknown"),
+          where('amount', '==', parseFloat(parsed.total_amount) || 0),
+          where('date', '==', parsed.date || "Unknown")
+        );
+        
+        const duplicateSnap = await getDocs(q);
+        if (!duplicateSnap.empty) {
+          const existing = duplicateSnap.docs[0].data();
+          setDuplicateWarning({ 
+            file, 
+            data: parsed, 
+            existingDate: existing.date 
+          });
+          // We don't increment processedCount yet because we are waiting for user confirmation
+          // But since we are in a loop, we have to handle this carefully.
+          // For simplicity in this beta, we skip auto-saving if duplicate found and let the modal handle it.
+          continue; 
         }
-        processedCount++;
+
+        // 4. Save to Firebase
+        const saved = await saveExpense(parsed, file);
+        if (saved) processedCount++;
       } catch (e: any) {
         console.error(`Extraction failed for ${file.name}`, e);
         if (e.status === 402) {
@@ -495,13 +528,35 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
   };
 
   const formatDisplayDate = (dateStr: string) => {
-    if (!dateStr || dateStr.toLowerCase() === "unknown") return "Unknown";
+    if (!dateStr || dateStr.toLowerCase() === "unknown") return "Unknown date";
     try {
       const parsedDate = new Date(dateStr);
       if (isNaN(parsedDate.getTime())) return dateStr;
       return parsedDate.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
     } catch {
       return dateStr;
+    }
+  };
+
+  const getRelativeDate = (dateStr: string) => {
+    if (!dateStr || dateStr.toLowerCase() === "unknown") return "";
+    try {
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return "";
+      const now = new Date();
+      // Set hours to 0 to compare days properly
+      const d1 = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      const d2 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const diffTime = d2.getTime() - d1.getTime();
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      
+      if (diffDays === 0) return "Today";
+      if (diffDays === 1) return "Yesterday";
+      if (diffDays < 7) return `${diffDays} days ago`;
+      if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
+      return "";
+    } catch {
+      return "";
     }
   };
 
@@ -1204,13 +1259,13 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
                           onClick={() => requestSort("vendor")}
                           className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest cursor-pointer hover:bg-slate-100 transition-colors border-b border-slate-100"
                         >
-                          <div className="flex items-center space-x-1"><span>Vendor & Entity</span>{renderSortIndicator("vendor")}</div>
+                          <div className="flex items-center space-x-1"><span>Vendor</span>{renderSortIndicator("vendor")}</div>
                         </th>
                         <th 
                           onClick={() => requestSort("date")}
                           className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest cursor-pointer hover:bg-slate-100 transition-colors border-b border-slate-100"
                         >
-                          <div className="flex items-center space-x-1"><span>Timeline</span>{renderSortIndicator("date")}</div>
+                          <div className="flex items-center space-x-1"><span>Date</span>{renderSortIndicator("date")}</div>
                         </th>
                         <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100">
                            Confidence
@@ -1219,7 +1274,7 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
                           onClick={() => requestSort("amount")}
                           className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest cursor-pointer text-right hover:bg-slate-100 transition-colors border-b border-slate-100"
                         >
-                          <div className="flex items-center justify-end space-x-1"><span>Valuation</span>{renderSortIndicator("amount")}</div>
+                          <div className="flex items-center justify-end space-x-1"><span>Amount</span>{renderSortIndicator("amount")}</div>
                         </th>
                         <th className="px-6 py-4 w-12 border-b border-slate-100"></th>
                       </tr>
@@ -1260,7 +1315,10 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
                             </div>
                           </td>
                           <td className="px-6 py-5">
-                            <div className="text-sm font-bold text-slate-600">{exp.date}</div>
+                            <div className="text-sm font-bold text-slate-900">{formatDisplayDate(exp.date)}</div>
+                            <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tight mt-0.5">
+                              {getRelativeDate(exp.date)}
+                            </div>
                             {exp.paymentMethod && exp.paymentMethod !== "Unknown" && (
                               <div className="text-[10px] text-slate-400 font-medium capitalize mt-1">{exp.paymentMethod}</div>
                             )}
@@ -1676,6 +1734,46 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
                 className="px-8 py-3 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 flex items-center"
               >
                 <Check className="w-4 h-4 mr-2"/> Commit All Updates
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Duplicate Warning Modal */}
+      {duplicateWarning && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 border-2 border-amber-100"
+          >
+            <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center mb-4 border border-amber-100">
+              <AlertCircle className="w-6 h-6" />
+            </div>
+            <h3 className="text-lg font-bold text-slate-900 mb-2">Possible Duplicate</h3>
+            <p className="text-sm text-slate-500 mb-6">
+              This looks like a duplicate of an existing entry from <strong>{formatDisplayDate(duplicateWarning.existingDate)}</strong>. <br /><br />
+              Vendor: {duplicateWarning.data.vendor}<br />
+              Amount: {formatCurrency(duplicateWarning.data.total_amount, duplicateWarning.data.currency)}<br /><br />
+              Save anyway?
+            </p>
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setDuplicateWarning(null)}
+                className="flex-1 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-all"
+              >
+                No, Skip
+              </button>
+              <button 
+                onClick={async () => {
+                  const saved = await saveExpense(duplicateWarning.data, duplicateWarning.file);
+                  if (saved) addToast("Duplicate entry saved manually.", "info");
+                  setDuplicateWarning(null);
+                }}
+                className="flex-1 px-4 py-2 text-sm font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl transition-all shadow-lg shadow-amber-200"
+              >
+                Yes, Save
               </button>
             </div>
           </motion.div>

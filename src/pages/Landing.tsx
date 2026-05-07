@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate, Link } from 'react-router-dom';
 import { FileSearch, Zap, ShieldCheck, PieChart, Users, Receipt, ArrowRight, CheckCircle2, Star, Menu, X, Mail, Sparkles } from 'lucide-react';
 import Footer from '../components/Footer';
+import HeroVisual from '../components/HeroVisual';
 
 export default function Landing() {
   const navigate = useNavigate();
@@ -141,50 +142,60 @@ export default function Landing() {
       <section className="pt-32 pb-20 px-4 relative overflow-hidden">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-[600px] bg-gradient-to-b from-blue-50/50 to-transparent -z-10 rounded-full blur-3xl opacity-50" />
         
-        <div className="max-w-5xl mx-auto text-center">
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-          >
-            <span className="inline-flex items-center px-4 py-1.5 rounded-full bg-blue-50 text-blue-700 text-xs font-bold tracking-widest uppercase mb-6 ring-1 ring-blue-100">
-              Introducing Auditor AI Precision
-            </span>
-            <h1 className="text-5xl md:text-7xl font-extrabold text-slate-900 tracking-tight leading-[1.1] mb-8">
-              Financial Data <br /> 
-              <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">Autopilot</span> for Teams.
-            </h1>
-            <p className="text-lg md:text-xl text-slate-600 max-w-2xl mx-auto mb-10 leading-relaxed">
-              Scan receipts, digest multi-page PDF invoices, and let our AI auditor verify the math. The first expense tool that fights for your accuracy.
-            </p>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <button 
-                onClick={() => navigate('/auth')}
-                className="w-full sm:w-auto px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold text-lg transition-all shadow-xl shadow-blue-200 flex items-center justify-center transform hover:scale-105 active:scale-95"
-              >
-                Start Free Scan <ArrowRight className="ml-2 w-5 h-5" />
-              </button>
-              <div className="flex -space-x-3 items-center ml-4">
-                {[1,2,3,4].map(i => (
-                  <div key={i} className="w-10 h-10 rounded-full border-2 border-white bg-slate-100 overflow-hidden ring-2 ring-slate-50">
-                    <img src={`https://picsum.photos/seed/${i + 130}/200`} referrerPolicy="no-referrer" alt="User" />
-                  </div>
-                ))}
-                <span className="ml-4 text-sm font-semibold text-slate-500 italic">Join 2,400+ accounting teams</span>
+        <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-center gap-12 lg:gap-8">
+          <div className="lg:w-[55%] text-center lg:text-left">
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6 }}
+            >
+              <span className="inline-flex items-center px-4 py-1.5 rounded-full bg-blue-50 text-blue-700 text-xs font-bold tracking-widest uppercase mb-6 ring-1 ring-blue-100">
+                Introducing Auditor AI Precision
+              </span>
+              <h1 className="text-5xl md:text-6xl lg:text-7xl font-extrabold text-slate-900 tracking-tight leading-[1.1] mb-6">
+                Financial Data <br /> 
+                <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">Autopilot</span> for Teams.
+              </h1>
+              <p className="text-lg md:text-xl text-slate-600 max-w-2xl lg:max-w-none mx-auto mb-10 leading-relaxed">
+                Scan receipts, digest multi-page PDF invoices, and let our AI auditor verify the math. The first expense tool that fights for your accuracy.
+              </p>
+              <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4 mb-8">
+                <button 
+                  onClick={() => navigate('/auth')}
+                  className="w-full sm:w-auto px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold text-lg transition-all shadow-xl shadow-blue-200 flex items-center justify-center transform hover:scale-105 active:scale-95"
+                >
+                  Start Free Scan <ArrowRight className="ml-2 w-5 h-5" />
+                </button>
+                <div className="flex items-center sm:ml-4">
+                  <span className="text-[10px] sm:text-sm font-semibold text-slate-500 italic">Built by indie devs</span>
+                </div>
               </div>
-            </div>
-          </motion.div>
+            </motion.div>
+          </div>
+          
+          <div className="lg:w-[45%] w-full flex justify-center lg:justify-end">
+             <motion.div
+               initial={{ opacity: 0, scale: 0.95 }}
+               animate={{ opacity: 1, scale: 1 }}
+               transition={{ duration: 0.8, delay: 0.2 }}
+               className="w-full"
+             >
+                <HeroVisual />
+             </motion.div>
+          </div>
         </div>
       </section>
 
       {/* Trusted By */}
       <section className="py-12 border-y border-slate-100 bg-slate-50/50">
-        <div className="max-w-7xl mx-auto px-4 flex flex-wrap justify-center items-center gap-8 md:gap-16 opacity-40 grayscale contrast-125 font-black tracking-widest text-slate-600">
-          <span className="text-2xl">FINANCE.CO</span>
-          <span className="text-2xl">BLOCK.INC</span>
-          <span className="text-2xl">ASSET.FLOW</span>
-          <span className="text-2xl">CRYPTIC</span>
-          <span className="text-2xl">GLOBAL.BANK</span>
+        <div className="max-w-7xl mx-auto px-4 flex flex-col items-center">
+          <p className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-2 text-center">Loved by early users — your logo could be here.</p>
+          <button 
+            onClick={() => setWaitlistOpen(true)}
+            className="text-sm font-bold text-blue-600 hover:underline"
+          >
+            Join waitlist
+          </button>
         </div>
       </section>
 
@@ -193,7 +204,7 @@ export default function Landing() {
         <div className="max-w-7xl mx-auto px-4">
           <div className="text-center mb-20">
             <h2 className="text-3xl md:text-5xl font-bold mb-4 tracking-tight">Built for Accuracy.</h2>
-            <p className="text-slate-500 max-w-xl mx-auto">Native AI extraction with built-in audit logic ensures your financial records are 100% consistent.</p>
+            <p className="text-slate-500 max-w-xl mx-auto">AI extraction with built-in math verification — flags errors before they hit your books.</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -254,7 +265,7 @@ export default function Landing() {
                  <div className="text-emerald-400">✓ Extracted Vendor: "Apple Store"</div>
                  <div className="text-emerald-400">✓ Subtotal ($99.00) + Tax ($8.17) = $107.17</div>
                  <div className="text-blue-400 animate-pulse">Running Auditor check...</div>
-                 <div className="text-slate-300">Confidence: 99.8% Perfect Match</div>
+                 <div className="text-slate-300">Confidence: 94.2% Verified</div>
                </div>
             </div>
             <div className="absolute -bottom-6 -right-6 bg-blue-600 rounded-xl p-4 shadow-xl border border-blue-400 transform -rotate-1 hidden md:block">
@@ -316,17 +327,8 @@ export default function Landing() {
                 "SLA Guarantees"
               ]}
               buttonText="Talk to Founder"
-              cta={() => window.location.href = 'mailto:Voidthoughts.official@gmail.com?subject=Enterprise Inquiry: Auditor AI'}
+              cta={() => window.location.href = 'mailto:[YOUR EMAIL]?subject=Enterprise Inquiry: Auditor AI'}
             />
-          </div>
-          
-          <div className="mt-16 text-center">
-            <p className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-4">Trusted for accuracy by</p>
-            <div className="flex flex-wrap justify-center items-center gap-8 opacity-30 grayscale contrast-200">
-               <span className="text-lg font-black tracking-tighter">FINANCE.LLP</span>
-               <span className="text-lg font-black tracking-tighter">CORP_LEDGER</span>
-               <span className="text-lg font-black tracking-tighter">AUDIT_FLOW</span>
-            </div>
           </div>
         </div>
       </section>

@@ -1,6 +1,6 @@
 {
   "name": "Auditor AI",
-  "description": "An Elite Financial Auditor AI with advanced mathematical verification for 100% precision in expense tracking and auditing.",
+  "description": "Simple AI-powered expense auditor for small businesses. Built for accuracy with automated math verification.",
   "requestFramePermissions": ["camera"],
   "majorCapabilities": []
 }
