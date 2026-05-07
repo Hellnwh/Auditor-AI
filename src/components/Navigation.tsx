@@ -28,31 +28,12 @@ export function Sidebar() {
         <Link to="/analytics" className={`flex items-center px-4 py-2.5 rounded-xl font-semibold transition-all ${location.pathname === "/analytics" ? "bg-blue-50 text-blue-700" : "text-slate-600 hover:bg-slate-50"}`}>
           <BarChart2 className="w-5 h-5 mr-3" /> Analytics
         </Link>
-        <Link to="/reports" className={`flex items-center px-4 py-2.5 rounded-xl font-semibold transition-all ${location.pathname === "/reports" ? "bg-blue-50 text-blue-700" : "text-slate-600 hover:bg-slate-50"}`}>
-          <FileText className="w-5 h-5 mr-3" /> Reports
-        </Link>
         <Link to="/settings" className={`flex items-center px-4 py-2.5 rounded-xl font-semibold transition-all ${location.pathname === "/settings" ? "bg-blue-50 text-blue-700" : "text-slate-600 hover:bg-slate-50"}`}>
-          <UserIcon className="w-5 h-5 mr-3" /> Audit Account
+          <UserIcon className="w-5 h-5 mr-3" /> Account Settings
         </Link>
       </nav>
 
       <div className="p-4 border-t border-slate-50 space-y-3">
-        <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl p-4 text-white shadow-xl shadow-blue-100 relative overflow-hidden group">
-          <div className="absolute -right-4 -bottom-4 w-24 h-24 bg-white/10 rounded-full blur-2xl group-hover:scale-150 transition-transform" />
-          <div className="text-[10px] font-bold uppercase tracking-widest text-blue-100 mb-1 opacity-80">Cloud Backup</div>
-          <p className="text-sm font-bold mb-3 leading-tight text-white relative z-10">
-            {user?.plan === "FREE" ? "Get Unlimited AI Scans & Pro Backup" : "Your enterprise dashboard is live."}
-          </p>
-          {user?.plan === "FREE" && (
-            <button 
-              className="w-full bg-white text-blue-700 py-2 rounded-xl text-xs font-bold hover:bg-blue-50 transition-colors shadow-sm relative z-10" 
-              onClick={() => alert("Premium access is currently available via custom invoice. Please contact support.")}
-            >
-              Upgrade Now
-            </button>
-          )}
-        </div>
-        
         <button onClick={logout} className="w-full flex items-center px-4 py-2.5 text-red-600 hover:bg-red-50 rounded-xl font-medium transition-all">
           <LogOut className="w-5 h-5 mr-3" /> Logout
         </button>
@@ -75,13 +56,9 @@ export function MobileNav() {
         <BarChart2 className="w-5 h-5" />
         <span className="text-[10px] font-bold">Analytics</span>
       </Link>
-      <Link to="/reports" className={`flex flex-col items-center space-y-1 ${location.pathname === "/reports" ? "text-blue-600" : "text-slate-400"}`}>
-        <FileText className="w-5 h-5" />
-        <span className="text-[10px] font-bold">Reports</span>
-      </Link>
       <Link to="/settings" className={`flex flex-col items-center space-y-1 ${location.pathname === "/settings" ? "text-blue-600" : "text-slate-400"}`}>
         <UserIcon className="w-5 h-5" />
-        <span className="text-[10px] font-bold">Audit Account</span>
+        <span className="text-[10px] font-bold">Settings</span>
       </Link>
       <button onClick={logout} className="flex flex-col items-center space-y-1 text-red-500">
         <LogOut className="w-5 h-5" />

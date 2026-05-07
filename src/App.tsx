@@ -9,7 +9,6 @@ import FeedbackDialog from "./components/FeedbackDialog";
 import ToastContainer, { useToasts } from "./components/Toast";
 import Auth from "./pages/Auth";
 import Analytics from "./pages/Analytics";
-import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import Landing from "./pages/Landing";
 import Legal from "./pages/Legal";
@@ -419,6 +418,23 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
       addToast("Failed to delete record.", "error");
     }
   };
+
+  const uniqueCategories = useMemo(() => {
+    const cats = new Set<string>();
+    expenses.forEach(e => {
+      if (e.category) cats.add(e.category);
+      // Also check line items for categories if top-level is missing
+      if (!e.category && e.lineItems) {
+        try {
+          const items = JSON.parse(e.lineItems);
+          if (Array.isArray(items) && items[0]?.category) {
+            cats.add(items[0].category);
+          }
+        } catch (err) {}
+      }
+    });
+    return Array.from(cats).sort();
+  }, [expenses]);
 
   const processedExpenses = useMemo(() => {
     let result = [...expenses];
@@ -1085,17 +1101,9 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
                       className="w-full pl-9 pr-3 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/10 focus:outline-none font-medium appearance-none"
                     >
                       <option value="All">All Categories</option>
-                      <option value="Food & Dining">Food & Dining</option>
-                      <option value="Travel">Travel</option>
-                      <option value="Transport">Transport</option>
-                      <option value="Groceries">Groceries</option>
-                      <option value="Utilities">Utilities</option>
-                      <option value="Office Supplies">Office Supplies</option>
-                      <option value="Software & Subscriptions">Software & Subscriptions</option>
-                      <option value="Healthcare">Healthcare</option>
-                      <option value="Shopping">Shopping</option>
-                      <option value="Entertainment">Entertainment</option>
-                      <option value="Other">Other</option>
+                      {uniqueCategories.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
                     </select>
                   </div>
                   <div className="relative">
@@ -1218,7 +1226,7 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
                                   </div>
                                   <div className="flex items-center space-x-1 text-[10px] text-slate-400 font-bold uppercase tracking-tight mt-0.5">
                                      <Tag className="w-3 h-3" />
-                                     <span>{exp.category || 'Unclassified'}</span>
+                                     <span>{exp.category || (parseLineItems(exp.lineItems)[0]?.category) || 'Unclassified'}</span>
                                   </div>
                                </div>
                             </div>
@@ -1886,7 +1894,6 @@ export default function App() {
         <Route path="/" element={!token ? <Landing /> : <DashboardContent expenses={expenses} authFetch={authFetch} logout={logout} addToast={addToast} updateToast={updateToast} />} />
         <Route path="/auth" element={!token ? <Auth setToken={setToken} setUser={setUser} /> : <Navigate to="/" />} />
         <Route path="/analytics" element={token ? <Analytics expenses={expenses} /> : <Navigate to="/auth" />} />
-        <Route path="/reports" element={token ? <Reports expenses={expenses} authFetch={authFetch} addToast={addToast} /> : <Navigate to="/auth" />} />
         <Route path="/settings" element={token ? <Settings user={user} logout={logout} refreshUser={refreshUser} addToast={addToast} /> : <Navigate to="/auth" />} />
         <Route path="/privacy" element={<Legal />} />
         <Route path="/terms" element={<Legal />} />
