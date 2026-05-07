@@ -507,6 +507,7 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
     }
   };
 
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -514,14 +515,127 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
       if (activeMenuId && !(e.target as Element).closest('.row-actions-menu')) {
         setActiveMenuId(null);
       }
+      if (exportMenuOpen && !(e.target as Element).closest('.bulk-export-menu')) {
+        setExportMenuOpen(false);
+      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [activeMenuId]);
+  }, [activeMenuId, exportMenuOpen]);
 
   const fmt = (n: any, decimals = 2): string => {
     if (n === null || n === undefined || Number.isNaN(Number(n))) return '';
     return Number(n).toFixed(decimals);
+  };
+
+  const exportSingleXLSX = (exp: Expense) => {
+    try {
+      const wb = xlsx.utils.book_new();
+
+      // Summary sheet
+      const summaryData = [{
+        Vendor: exp.vendor || '',
+        Date: exp.date || '',
+        Currency: exp.currency || '',
+        Subtotal: Number(exp.subtotal ?? 0),
+        Tax: Number(exp.taxAmount ?? 0),
+        Discount: Number(exp.discount ?? 0),
+        Total: Number(exp.amount ?? 0),
+        Discrepancy: exp.discrepancy || 'no',
+        'Discrepancy Reason': exp.discrepancyReason || '',
+        Confidence: Number(exp.confidence ?? 0),
+      }];
+      const summarySheet = xlsx.utils.json_to_sheet(summaryData);
+      xlsx.utils.book_append_sheet(wb, summarySheet, 'Summary');
+
+      // Line Items sheet
+      const items = parseLineItems(exp.lineItems);
+      const itemsData = items.map((i: any) => ({
+        Description: i.description || i.name || '',
+        Quantity: Number(i.quantity ?? 1),
+        'Unit Price': Number(i.unit_price ?? (i.amount || 0)),
+        Amount: Number(i.amount ?? i.total_price ?? 0),
+        Category: i.category || exp.category || 'Other',
+      }));
+      const itemsSheet = xlsx.utils.json_to_sheet(itemsData);
+      xlsx.utils.book_append_sheet(wb, itemsSheet, 'Line Items');
+
+      // Column widths
+      summarySheet['!cols'] = [
+        { wch: 30 }, { wch: 12 }, { wch: 10 }, { wch: 12 },
+        { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 12 },
+        { wch: 40 }, { wch: 10 },
+      ];
+      itemsSheet['!cols'] = [
+        { wch: 40 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 18 },
+      ];
+
+      const vendorSlug = exp.vendor.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+      const dateStr = exp.date;
+      const shortId = exp.id.slice(0, 6);
+      const filename = `${vendorSlug}-${dateStr}-${shortId}.xlsx`;
+      xlsx.writeFile(wb, filename);
+      addToast("Audit data exported as Excel.", "success");
+    } catch (err: any) {
+      console.error('Single XLSX Export failed:', err);
+      addToast(`Export failed: ${err.message || 'Unknown error'}`, "error");
+    }
+  };
+
+  const exportXLSX = () => {
+    try {
+      const wb = xlsx.utils.book_new();
+
+      // Summary sheet
+      const summaryData = processedExpenses.map(e => ({
+        Vendor: e.vendor || '',
+        Date: e.date || '',
+        Currency: e.currency || '',
+        Subtotal: Number(e.subtotal ?? 0),
+        Tax: Number(e.taxAmount ?? 0),
+        Discount: Number(e.discount ?? 0),
+        Total: Number(e.amount ?? 0),
+        Discrepancy: e.discrepancy || 'no',
+        'Discrepancy Reason': e.discrepancyReason || '',
+        Confidence: Number(e.confidence ?? 0),
+      }));
+      const summarySheet = xlsx.utils.json_to_sheet(summaryData);
+      xlsx.utils.book_append_sheet(wb, summarySheet, 'Summary');
+
+      // Line Items sheet
+      const itemsData = processedExpenses.flatMap(e => {
+        const items = parseLineItems(e.lineItems);
+        return items.map((i: any) => ({
+          Vendor: e.vendor || '',
+          Date: e.date || '',
+          Description: i.description || i.name || '',
+          Quantity: Number(i.quantity ?? 1),
+          'Unit Price': Number(i.unit_price ?? (i.amount || 0)),
+          Amount: Number(i.amount ?? i.total_price ?? 0),
+          Category: i.category || e.category || 'Other',
+        }));
+      });
+      const itemsSheet = xlsx.utils.json_to_sheet(itemsData);
+      xlsx.utils.book_append_sheet(wb, itemsSheet, 'Line Items');
+
+      // Column widths
+      summarySheet['!cols'] = [
+        { wch: 30 }, { wch: 12 }, { wch: 10 }, { wch: 12 },
+        { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 12 },
+        { wch: 40 }, { wch: 10 },
+      ];
+      itemsSheet['!cols'] = [
+        { wch: 30 }, { wch: 12 }, { wch: 40 }, { wch: 10 },
+        { wch: 12 }, { wch: 12 }, { wch: 18 },
+      ];
+
+      const filename = `auditor-ai-export-${new Date().toISOString().split("T")[0]}.xlsx`;
+      xlsx.writeFile(wb, filename);
+      addToast(`Exported ${processedExpenses.length} records to Excel.`, "success");
+    } catch (err: any) {
+      console.error('XLSX Export failed:', err);
+      alert(`Excel Export failed: ${err.message || 'Unknown error'}. Please try again.`);
+    }
   };
 
   const exportSingleJSON = (exp: Expense) => {
@@ -553,13 +667,13 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
         `"${exp.vendor.replace(/"/g, '""')}"`,
         `"${exp.date}"`,
         exp.currency || "USD",
-        fmt(exp.subtotal),
-        fmt(exp.taxAmount),
-        fmt(exp.discount),
-        fmt(exp.amount),
+        fmt(exp.subtotal ?? 0),
+        fmt(exp.taxAmount ?? 0),
+        fmt(exp.discount ?? 0),
+        fmt(exp.amount ?? 0),
         exp.discrepancy || "no",
         `"${(exp.discrepancyReason || "").replace(/"/g, '""')}"`,
-        fmt(exp.confidence)
+        fmt(exp.confidence ?? 0)
       ].join(",");
 
       const itemHeaders = ["Description", "Quantity", "Unit Price", "Amount", "Category"];
@@ -574,8 +688,8 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
         return [
           `"${itemName.replace(/"/g, '""')}"`,
           q,
-          fmt(up),
-          fmt(p),
+          fmt(up ?? 0),
+          fmt(p ?? 0),
           `"${cat}"`
         ].join(",");
       });
@@ -627,13 +741,13 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
           `"${exp.date}"`,
           exp.currency || "USD",
           `"${exp.paymentMethod || "Unknown"}"`,
-          exp.confidence !== null ? Math.round((exp.confidence || 0) * 100) + '%' : "",
+          exp.confidence !== null ? Math.round((exp.confidence || 0) * 100) + '%' : "0%",
           exp.discrepancy || "no",
           `"${(exp.discrepancyReason || "").replace(/"/g, '""')}"`,
-          fmt(exp.amount),
-          fmt(exp.subtotal),
-          fmt(exp.taxAmount),
-          fmt(exp.discount)
+          fmt(exp.amount ?? 0),
+          fmt(exp.subtotal ?? 0),
+          fmt(exp.taxAmount ?? 0),
+          fmt(exp.discount ?? 0)
         ];
 
         const items = parseLineItems(exp.lineItems);
@@ -906,14 +1020,44 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
                       )}
                     </div>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button 
-                      onClick={exportCSV} 
-                      className="flex items-center space-x-2 px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-100 transition-all shadow-sm"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                      <span>Export</span>
-                    </button>
+                  <div className="flex flex-wrap items-center gap-2 relative">
+                    <div className="relative bulk-export-menu">
+                      <button 
+                        onClick={() => setExportMenuOpen(!exportMenuOpen)} 
+                        className="flex items-center space-x-2 px-3 py-1.5 text-xs bg-slate-900 border border-slate-800 text-white font-bold rounded-xl hover:bg-slate-800 transition-all shadow-lg shadow-slate-200"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>Export</span>
+                        <ChevronDown className={`w-3 h-3 transition-transform ${exportMenuOpen ? 'rotate-180' : ''}`} />
+                      </button>
+
+                      <AnimatePresence>
+                        {exportMenuOpen && (
+                          <motion.div 
+                            initial={{ opacity: 0, scale: 0.9, y: 5 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.9, y: 5 }}
+                            className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 py-2 overflow-hidden"
+                          >
+                            <button 
+                              onClick={() => { exportXLSX(); setExportMenuOpen(false); }}
+                              className="w-full flex items-center px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+                            >
+                              <FileText className="w-3.5 h-3.5 mr-3 text-emerald-500" />
+                              Excel (.xlsx)
+                              <span className="ml-auto text-[8px] bg-emerald-50 text-emerald-600 px-1.5 py-0.5 rounded">NEW</span>
+                            </button>
+                            <button 
+                              onClick={() => { exportCSV(); setExportMenuOpen(false); }}
+                              className="w-full flex items-center px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+                            >
+                              <Tag className="w-3.5 h-3.5 mr-3 text-blue-500" />
+                              CSV
+                            </button>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
                     {hasActiveFilters && (
                       <button onClick={clearFilters} className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center px-2">
                         <X className="w-3 h-3 mr-1"/> Clear
@@ -1132,6 +1276,13 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
                                      >
                                        <FileText className="w-3.5 h-3.5 mr-3 text-blue-500" />
                                        View Details
+                                     </button>
+                                     <button 
+                                      onClick={() => { exportSingleXLSX(exp); setActiveMenuId(null); }}
+                                      className="w-full flex items-center px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+                                     >
+                                       <FileText className="w-3.5 h-3.5 mr-3 text-indigo-500" />
+                                       Export as Excel
                                      </button>
                                      <button 
                                       onClick={() => { exportSingleCSV(exp); setActiveMenuId(null); }}
