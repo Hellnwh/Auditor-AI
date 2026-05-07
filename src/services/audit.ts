@@ -1,6 +1,6 @@
-import { getAuth } from 'firebase/auth';
+import { auth } from '../lib/firebase';
 
-const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || "").replace(/\/+$/, '');
+const BACKEND_URL = import.meta.env.DEV ? "" : (import.meta.env.VITE_BACKEND_URL || "").replace(/\/+$/, '');
 
 export async function runAudit(opts: {
   fileBase64?: string;
@@ -8,7 +8,7 @@ export async function runAudit(opts: {
   spreadsheetText?: string;
   useGoogleSearch?: boolean;
 }) {
-  const user = getAuth().currentUser;
+  const user = auth.currentUser;
   if (!user) throw new Error('Not signed in');
   const token = await user.getIdToken();
 
