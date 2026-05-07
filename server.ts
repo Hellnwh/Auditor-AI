@@ -25,8 +25,17 @@ if (!admin.apps.length) {
     });
   } else {
     // Local dev or GCP-managed runtime
+    let projectId = process.env.FIREBASE_PROJECT_ID;
+    try {
+      const config = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf8'));
+      if (config.projectId) projectId = config.projectId;
+    } catch(e) {}
+    
+    console.log('Firebase Admin initializing with projectId:', projectId);
+
     admin.initializeApp({
       credential: admin.credential.applicationDefault(),
+      ...(projectId && { projectId })
     });
   }
 }
@@ -43,7 +52,8 @@ async function requireAuth(req: any, res: any, next: any) {
     const decoded = await admin.auth().verifyIdToken(token);
     req.uid = decoded.uid;
     next();
-  } catch {
+  } catch (error) {
+    console.error('Invalid auth token error:', error);
     return res.status(401).json({ error: 'Invalid auth token' });
   }
 }
@@ -148,7 +158,11 @@ async function startServer() {
           // googleSearch is incompatible with responseSchema — only enable when explicitly requested,
           // and in that case we drop responseSchema and rely on tolerant parsing.
           ...(useGoogleSearch
-            ? { tools: [{ googleSearch: {} }], responseSchema: undefined }
+            ? {
+                tools: [{ googleSearch: {} }],
+                responseSchema: undefined,
+                responseMimeType: undefined,
+              }
             : {}),
         },
       });
