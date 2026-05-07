@@ -154,7 +154,6 @@ async function startServer() {
           responseMimeType: 'application/json',
           responseSchema: RESPONSE_SCHEMA,
           maxOutputTokens: 16384,
-          thinkingConfig: { thinkingLevel: 'medium' },
           // googleSearch is incompatible with responseSchema — only enable when explicitly requested,
           // and in that case we drop responseSchema and rely on tolerant parsing.
           ...(useGoogleSearch

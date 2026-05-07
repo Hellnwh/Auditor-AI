@@ -440,7 +440,7 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
               <div className="flex -space-x-2 mr-2">
                 {[1,2,3].map(i => (
                   <div key={i} className="w-8 h-8 rounded-full border-2 border-white bg-slate-200 overflow-hidden shrink-0">
-                    <img src={`https://picsum.photos/seed/${i + 50}/100`} referrerPolicy="no-referrer" alt="Team" className="w-full h-full object-cover" />
+                    <img src={`https://randomuser.me/api/portraits/women/${40 + i}.jpg`} referrerPolicy="no-referrer" alt="Team" className="w-full h-full object-cover" />
                   </div>
                 ))}
               </div>
