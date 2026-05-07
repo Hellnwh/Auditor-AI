@@ -269,10 +269,37 @@ export default function Settings({ user, logout, refreshUser, addToast }: { user
                 <div className="bg-slate-900 p-6 rounded-2xl text-white relative overflow-hidden group">
                    <Zap className="w-20 h-20 text-blue-500/20 absolute -right-4 -bottom-4 rotate-12 group-hover:scale-110 transition-transform" />
                    <h4 className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-2">Usage Quota</h4>
-                   <div className="text-3xl font-black tracking-tight mb-2">{user?.scansLeft} <span className="text-sm text-slate-400">Scans</span></div>
+                   <div className="text-3xl font-black tracking-tight mb-2">
+                     {user?.plan === 'FREE' ? `${user?.monthlyScanCount || 0} / 5` : 'Unlimited'} 
+                     <span className="text-sm text-slate-400 ml-2">Scans Used</span>
+                   </div>
                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Status: {user?.plan} LICENSE ACTIVE</p>
+                   {user?.plan === 'FREE' && user?.quotaResetDate && (
+                     <p className="text-[10px] font-bold text-blue-400 uppercase tracking-tight mt-1">
+                       Resets: {new Date(user.quotaResetDate.seconds ? user.quotaResetDate.seconds * 1000 : user.quotaResetDate).toLocaleDateString()}
+                     </p>
+                   )}
                    <div className="mt-6 w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                      <div className="h-full bg-blue-500 transition-all duration-1000" style={{ width: user?.plan === 'FREE' ? `${(user?.scansLeft / 10) * 100}%` : '100%' }} />
+                      <div className="h-full bg-blue-500 transition-all duration-1000" style={{ width: user?.plan === 'FREE' ? `${Math.min(100, ((user?.monthlyScanCount || 0) / 5) * 100)}%` : '100%' }} />
+                   </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                   <div className="flex items-center justify-between mb-4">
+                      <div>
+                         <h4 className="text-sm font-black text-slate-900 tracking-tight">Billing & Payments</h4>
+                         <p className="text-xs text-slate-500 font-medium">Manage your subscription and payment methods.</p>
+                      </div>
+                      <CreditCard className="w-5 h-5 text-slate-400" />
+                   </div>
+                   <div className="bg-slate-50 rounded-xl p-4 border border-dashed border-slate-200 text-center">
+                      <p className="text-xs font-bold text-slate-500">Payment integration via Razorpay is currently in setup.</p>
+                      <button 
+                        disabled
+                        className="mt-3 px-4 py-2 bg-slate-100 text-slate-400 font-bold text-[10px] rounded-lg cursor-not-allowed uppercase tracking-wider"
+                      >
+                        Add Payment Method
+                      </button>
                    </div>
                 </div>
 

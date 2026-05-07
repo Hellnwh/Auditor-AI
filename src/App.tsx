@@ -169,6 +169,8 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
     });
   };
 
+  const [quotaExceededInfo, setQuotaExceededInfo] = useState<{ resetDate: string } | null>(null);
+
   async function confirmUpload() {
     if (files.length === 0) return;
     setUploadConfirm(false);
@@ -184,13 +186,6 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
          continue;
       }
       try {
-        if (user?.plan === "FREE" && user.scansLeft <= 0) {
-          const msg = "Scan Limit Reached. High-performance extraction is reserved for Pro licenses.";
-          setError(msg);
-          updateToast(toastId, msg, "error");
-          break;
-        }
-
         // 1. Prepare Data
         let textContent = "";
         let base64Data = "";
@@ -271,15 +266,11 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
         // Low confidence check
         if (parsed.confidence && parsed.confidence < 0.5) {
           addToast(`Low confidence for ${file.name}. Ensure good lighting and focus.`, "warning");
-          // We still save it, but maybe we should flag it or prompt to retake?
-          // The request says "surface a friendly message... Then offer the Re-take button again"
-          // This implies maybe we shouldn't save yet if confidence is too low?
-          // Or save and notify. Let's save but show the message as requested.
           setError("This photo was hard to read. Try again with better lighting, less glare, and the receipt fully in frame.");
         }
 
         // 3. Save to Firebase
-        const { doc, collection, setDoc, getDoc, updateDoc, serverTimestamp } = await import('firebase/firestore');
+        const { doc, collection, setDoc, serverTimestamp } = await import('firebase/firestore');
         const { db } = await import('./lib/firebase');
         const { handleFirestoreError, OperationType } = await import('./lib/firestoreUtils');
 
@@ -308,25 +299,16 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
           } catch (err) {
             handleFirestoreError(err, OperationType.WRITE, `${expensePath}/${expenseRef.id}`);
           }
-
-          if (user.plan === "FREE") {
-            const userRef = doc(db, 'users', user.id);
-            const userDoc = await getDoc(userRef);
-            if (userDoc.exists()) {
-               try {
-                 await updateDoc(userRef, { scansLeft: Math.max(0, userDoc.data().scansLeft - 1) });
-               } catch (err) {
-                 handleFirestoreError(err, OperationType.UPDATE, `users/${user.id}`);
-               }
-               if (authFetch) {
-                 // Removed refresh user within loop to avoid unnecessary requests; caller relies on snapshot
-               }
-            }
-          }
         }
         processedCount++;
       } catch (e: any) {
         console.error(`Extraction failed for ${file.name}`, e);
+        if (e.status === 402) {
+          setQuotaExceededInfo({ resetDate: e.resetDate });
+          updateToast(toastId, "Scan limit reached.", "error");
+          processedCount = 0; // stop processing
+          break;
+        }
         let errorMsg = e.message || "Extraction failed.";
         if (errorMsg.includes("API_KEY_INVALID") || errorMsg.includes("leaked")) {
            errorMsg = "API Key Error. Check configuration.";
@@ -834,6 +816,52 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
   return (
     <div className="min-h-screen bg-slate-50 flex">
       {/* Sidebar - Desktop */}
+      {/* Quota Exceeded Modal */}
+      <AnimatePresence>
+        {quotaExceededInfo && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-white rounded-[2rem] shadow-2xl max-w-sm w-full overflow-hidden border border-white"
+            >
+              <div className="p-8 text-center">
+                <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-3xl flex items-center justify-center mb-6 border border-blue-100 shadow-sm mx-auto">
+                  <Zap className="w-10 h-10" />
+                </div>
+                <h3 className="text-2xl font-black text-slate-900 tracking-tight leading-tight mb-3">Scan Limit Reached</h3>
+                <p className="text-sm font-medium text-slate-500 mb-8 leading-relaxed">
+                  You've used all 5 free scans this month. Upgrade to Pro for unlimited scans and high-performance extraction, or wait for your quota to reset.
+                </p>
+                
+                <div className="bg-slate-50 rounded-2xl p-4 mb-8">
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Quota Resets On</div>
+                  <div className="text-sm font-bold text-slate-900">
+                    {new Date(quotaExceededInfo.resetDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-3">
+                  <button 
+                    disabled
+                    className="w-full py-4 bg-slate-100 text-slate-400 font-bold text-sm rounded-2xl transition-all cursor-not-allowed flex items-center justify-center"
+                  >
+                    Upgrade to Pro <span className="ml-2 text-[8px] bg-slate-200 px-1.5 py-0.5 rounded uppercase">Coming Soon</span>
+                  </button>
+                  <button 
+                    onClick={() => setQuotaExceededInfo(null)}
+                    className="w-full py-4 bg-white text-slate-600 hover:bg-slate-50 font-bold text-sm rounded-2xl transition-all border border-slate-200"
+                  >
+                    Got it
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       <Sidebar />
 
       {/* Main Content */}

@@ -175,6 +175,60 @@ async function startServer() {
       return res.status(429).json({ error: 'Rate limit exceeded' });
     }
   
+    // 1. Quota Enforcement
+    const db = admin.firestore();
+    const userRef = db.collection('users').doc(req.uid);
+    const now = new Date();
+    
+    let quotaError: { status: number, message: string, resetDate: string } | null = null;
+
+    try {
+      await db.runTransaction(async (t) => {
+        const userDoc = await t.get(userRef);
+        let userData = userDoc.data() || {};
+        
+        const plan = userData.plan || 'FREE';
+        if (plan === 'FREE') {
+          let count = userData.monthlyScanCount || 0;
+          let resetDate = userData.quotaResetDate ? userData.quotaResetDate.toDate() : null;
+
+          // If no reset date or reset date passed, reset the count
+          if (!resetDate || now > resetDate) {
+            count = 0;
+            resetDate = new Date(now);
+            resetDate.setMonth(resetDate.getMonth() + 1);
+            t.set(userRef, { 
+              monthlyScanCount: count, 
+              quotaResetDate: admin.firestore.Timestamp.fromDate(resetDate) 
+            }, { merge: true });
+          }
+
+          if (count >= 5) {
+            quotaError = {
+              status: 402,
+              message: `You've used all 5 free scans this month. Upgrade to Pro for unlimited scans, or wait until ${resetDate.toLocaleDateString()}.`,
+              resetDate: resetDate.toISOString()
+            };
+            return;
+          }
+
+          // Increment count for this audit
+          t.update(userRef, { monthlyScanCount: count + 1 });
+        }
+      });
+    } catch (err) {
+      console.error('Quota transaction failed:', err);
+      // Proceed if user doc doesn't exist yet, but first-time users should be created elsewhere
+    }
+
+    if (quotaError) {
+      return res.status((quotaError as any).status).json({ 
+        error: 'quota_exceeded', 
+        message: (quotaError as any).message,
+        resetDate: (quotaError as any).resetDate
+      });
+    }
+  
     const { contents, useGoogleSearch } = req.body;
     if (!contents) return res.status(400).json({ error: 'Missing contents' });
   

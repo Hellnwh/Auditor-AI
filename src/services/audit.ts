@@ -35,6 +35,12 @@ export async function runAudit(opts: {
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
+    if (res.status === 402 || err.error === 'quota_exceeded') {
+      const error = new Error(err.message || 'Quota exceeded');
+      (error as any).status = 402;
+      (error as any).resetDate = err.resetDate;
+      throw error;
+    }
     throw new Error(err.error || `Backend error ${res.status}`);
   }
 

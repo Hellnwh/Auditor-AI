@@ -16,14 +16,15 @@ service cloud.firestore {
     // --- VALIDATION BLUEPRINTS ---
     
     function isValidUser(data) {
-      return data.keys().hasAll(['name', 'email', 'plan', 'scansLeft', 'createdAt']) 
+      return data.keys().hasAll(['name', 'email', 'plan', 'monthlyScanCount', 'createdAt']) 
         && data.keys().size() >= 5
-        && data.keys().size() <= 9
+        && data.keys().size() <= 12
         && data.name is string && data.name.size() > 0 && data.name.size() <= 100
         && data.email is string && data.email.size() > 0 && data.email.size() <= 150
         && data.plan in ['FREE', 'PRO', 'ENTERPRISE']
-        && data.scansLeft is int && data.scansLeft >= 0
+        && data.monthlyScanCount is int && data.monthlyScanCount >= 0
         && data.createdAt == request.time
+        && (!('quotaResetDate' in data) || data.quotaResetDate is timestamp)
         && (!('companyName' in data) || data.companyName == null || (data.companyName is string && data.companyName.size() <= 100))
         && (!('jobTitle' in data) || data.jobTitle == null || (data.jobTitle is string && data.jobTitle.size() <= 100))
         && (!('phoneNumber' in data) || data.phoneNumber == null || (data.phoneNumber is string && data.phoneNumber.size() <= 20))
@@ -80,16 +81,16 @@ service cloud.firestore {
       allow create: if isOwner(userId)
         && isValidUser(incoming())
         && incoming().plan == 'FREE'
-        && incoming().scansLeft == 10;
+        && incoming().monthlyScanCount == 0;
       allow update: if isOwner(userId) 
         && incoming().plan == existing().plan 
         && incoming().createdAt == existing().createdAt
         && (
-          incoming().scansLeft == existing().scansLeft ||
-          (incoming().scansLeft == existing().scansLeft - 1 && incoming().scansLeft >= 0)
+          incoming().monthlyScanCount == existing().monthlyScanCount ||
+          (incoming().monthlyScanCount == existing().monthlyScanCount + 1)
         )
         && (
-          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'email', 'companyName', 'jobTitle', 'phoneNumber', 'picture', 'scansLeft'])
+          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'email', 'companyName', 'jobTitle', 'phoneNumber', 'picture', 'monthlyScanCount', 'quotaResetDate'])
         );
       allow delete: if isOwner(userId);
     }
@@ -156,8 +157,15 @@ service cloud.firestore {
         && isValidId(feedbackId)
         && isValidFeedback(incoming())
         && (incoming().userId == request.auth.uid || !('userId' in incoming()));
-      
-      // Feedback is read-only for admins (not defined here for brevity) or not at all on client
+    }
+
+    // WAITLIST: Market signal collection
+    match /waitlist/{entryId} {
+      allow create: if incoming().email is string 
+        && incoming().email.size() > 0 
+        && incoming().email.size() <= 200
+        && incoming().createdAt == request.time;
+      allow read: if false;
     }
   }
 }

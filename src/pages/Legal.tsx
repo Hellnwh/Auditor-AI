@@ -41,87 +41,45 @@ export default function Legal() {
 
           <div className="prose prose-slate max-w-none">
             {isPrivacy ? (
-              <div className="space-y-6 text-slate-600 leading-relaxed font-medium">
-                <p>Last updated: 07/05/2026</p>
-                <p>Auditor AI ("we", "our", "the app") is operated by Void-AI, based in India. This policy explains what data we handle and how.</p>
-                
-                <section>
-                  <h2 className="text-xl font-bold text-slate-900 mb-3">1. What we collect</h2>
-                  <ul className="list-disc pl-5 space-y-2">
-                    <li>Files you upload: receipts, invoices, PDFs, and spreadsheets you submit for extraction.</li>
-                    <li>Extracted data: the structured fields (vendor, date, amounts, line items, etc.) returned by our AI processing.</li>
-                    <li>Account information: email address and authentication data managed via Firebase Authentication.</li>
-                  </ul>
-                </section>
-                
-                <section>
-                  <h2 className="text-xl font-bold text-slate-900 mb-3">2. How we process your data</h2>
-                  <ul className="list-disc pl-5 space-y-2">
-                    <li>Uploaded documents are sent to Google's Gemini API for AI-based extraction and verification. By using Auditor AI, you acknowledge that your documents are processed by Google as a sub-processor under Google's API terms.</li>
-                    <li>Extracted structured data is stored in Google Firestore associated with your account.</li>
-                    <li>We do not sell your data. We do not use your documents to train any AI model.</li>
-                  </ul>
-                </section>
-                
-                <section>
-                  <h2 className="text-xl font-bold text-slate-900 mb-3">3. Web search and vendor verification</h2>
-                  <p>For some audits, the AI may use Google Search grounding to verify vendor names or local tax rates. The text of your document may be included in those search queries.</p>
-                </section>
-                
-                <section>
-                  <h2 className="text-xl font-bold text-slate-900 mb-3">4. Data retention and deletion</h2>
-                  <ul className="list-disc pl-5 space-y-2">
-                    <li>You can delete any audit record from your account at any time from within the app. Deletion is permanent and removes the record from Firestore.</li>
-                    <li>Account deletion: contact Voidthoughts.official@gmail.com and we will delete your account and all associated records within 30 days.</li>
-                  </ul>
-                </section>
-                
-                <section>
-                  <h2 className="text-xl font-bold text-slate-900 mb-3">5. Security</h2>
-                  <ul className="list-disc pl-5 space-y-2">
-                    <li>Data is transmitted over HTTPS.</li>
-                    <li>Firestore data is encrypted at rest by Google Cloud's default encryption.</li>
-                    <li>We do not have additional security certifications (SOC 2, ISO 27001) at this time. Do not upload documents containing data you are not authorized to share.</li>
-                  </ul>
-                </section>
-                
-                <section>
-                  <h2 className="text-xl font-bold text-slate-900 mb-3">6. Your rights</h2>
-                  <ul className="list-disc pl-5 space-y-2">
-                    <li>Under India's Digital Personal Data Protection Act 2023, you have the right to access, correct, and delete your personal data, and to withdraw consent.</li>
-                    <li>Under GDPR (if you are in the EEA/UK), you additionally have the right to data portability and to lodge a complaint with a supervisory authority.</li>
-                  </ul>
-                </section>
-                
-                <section>
-                  <h2 className="text-xl font-bold text-slate-900 mb-3">7. Contact</h2>
-                  <p>For privacy questions, deletion requests, or complaints: Voidthoughts.official@gmail.com</p>
-                </section>
-                
-                <section>
-                  <h2 className="text-xl font-bold text-slate-900 mb-3">8. Changes</h2>
-                  <p>We will update the "Last updated" date at the top of this page when this policy changes. Material changes will be communicated via email if you have an account.</p>
-                </section>
-              </div>
-            ) : (
-              <div className="space-y-6 text-slate-600 leading-relaxed font-medium">
-                <section>
-                  <h2 className="text-xl font-bold text-slate-900 mb-3">1. Acceptance of Terms</h2>
-                  <p>By accessing Auditor AI, you agree to bound by these terms. Our service is provided as-is, optimized for financial auditing precision.</p>
-                </section>
-                <section>
-                  <h2 className="text-xl font-bold text-slate-900 mb-3">2. Use of Service</h2>
-                  <p>The "Individual" tier is for personal use only. Enterprise behaviors (team sharing, mass extraction) require the Professional or Enterprise tier license.</p>
-                </section>
-                <section>
-                  <h2 className="text-xl font-bold text-slate-900 mb-3">3. Accuracy Disclaimer</h2>
-                  <p>Auditor AI provides mathematical validation logic. However, ultimate responsibility for financial filings rests with the user and their certified accountants.</p>
-                </section>
-                <section>
-                  <h2 className="text-xl font-bold text-slate-900 mb-3">4. Intellectual Property</h2>
-                  <p>The "Auditor AI" name and its precision-audit algorithms are the exclusive property of Auditor AI Corp.</p>
-                </section>
-              </div>
+                <div className="space-y-6 text-slate-600 leading-relaxed font-medium">
+                  <p>Last updated: May 2026</p>
+                  <p>Auditor AI is currently operated by <strong>[YOUR NAME]</strong> ("the Operator"). This policy explains our commitment to your data during this preview/beta phase.</p>
+                  
+                  <section>
+                    <h2 className="text-xl font-bold text-slate-900 mb-3">1. Data Handling</h2>
+                    <p>We process documents you upload using the Google Gemini API to provide financial extraction features. Your data is stored in Google Cloud (Firestore) and is associated with your authenticated account.</p>
+                  </section>
+                  
+                  <section>
+                    <h2 className="text-xl font-bold text-slate-900 mb-3">2. Privacy & Security</h2>
+                    <p>We do not sell your personal data. We use industry-standard encryption provided by Google Cloud to protect your documents at rest and in transit. However, as this is a beta service, please do not upload highly sensitive or proprietary financial data that you are not authorized to share.</p>
+                  </section>
+                  
+                  <section>
+                    <h2 className="text-xl font-bold text-slate-900 mb-3">3. Ownership</h2>
+                    <p>You retain all rights to the documents you upload. The software, algorithms, and brand "Auditor AI" are the property of the Operator.</p>
+                  </section>
+                  
+                  <section>
+                    <h2 className="text-xl font-bold text-slate-900 mb-3">4. Contact & Deletion</h2>
+                    <p>For data deletion requests or privacy inquiries, please contact <strong>[YOUR EMAIL]</strong>. We will process all requests within 30 days.</p>
+                  </section>
+                </div>
+              ) : (
+                <div className="space-y-6 text-slate-600 leading-relaxed font-medium">
+                  <section>
+                    <h2 className="text-xl font-bold text-slate-900 mb-3">1. Terms of Use</h2>
+                    <p>Auditor AI is provided "as is" without warranties of any kind. By using this service, you agree that the Operator ([YOUR NAME]) is not liable for any financial inaccuracies or audit failures resulting from the use of this tool.</p>
+                  </section>
+                  <section>
+                    <h2 className="text-xl font-bold text-slate-900 mb-3">2. beta Status</h2>
+                    <p>The service is currently in a beta/preview phase. Features, pricing, and availability are subject to change without notice.</p>
+                  </section>
+                  <section>
+                    <h2 className="text-xl font-bold text-slate-900 mb-3">3. Governing Law</h2>
+                    <p>These terms shall be governed by the laws of your local jurisdiction.</p>
+                  </section>
+                </div>
             )}
           </div>
 

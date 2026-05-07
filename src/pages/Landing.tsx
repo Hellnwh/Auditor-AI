@@ -1,15 +1,97 @@
 import React, { useState } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate, Link } from 'react-router-dom';
-import { FileSearch, Zap, ShieldCheck, PieChart, Users, Receipt, ArrowRight, CheckCircle2, Star, Menu, X } from 'lucide-react';
+import { FileSearch, Zap, ShieldCheck, PieChart, Users, Receipt, ArrowRight, CheckCircle2, Star, Menu, X, Mail, Sparkles } from 'lucide-react';
 import Footer from '../components/Footer';
 
 export default function Landing() {
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [waitlistEmail, setWaitlistEmail] = useState('');
+  const [waitlistOpen, setWaitlistOpen] = useState(false);
+  const [waitlistStatus, setWaitlistStatus] = useState<'idle' | 'loading' | 'success'>('idle');
+
+  const joinWaitlist = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!waitlistEmail) return;
+    setWaitlistStatus('loading');
+    
+    try {
+      const { collection, addDoc, serverTimestamp } = await import('firebase/firestore');
+      const { db } = await import('../lib/firebase');
+      await addDoc(collection(db, 'waitlist'), {
+        email: waitlistEmail,
+        createdAt: serverTimestamp(),
+        source: 'landing_pricing'
+      });
+      setWaitlistStatus('success');
+      setTimeout(() => {
+        setWaitlistOpen(false);
+        setWaitlistStatus('idle');
+        setWaitlistEmail('');
+      }, 2000);
+    } catch (err) {
+      console.error('Waitlist error:', err);
+      setWaitlistStatus('idle');
+      alert('Something went wrong. Please try again.');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-white text-slate-900 font-sans selection:bg-blue-100 selection:text-blue-900">
+      <AnimatePresence>
+        {waitlistOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="bg-white rounded-[2rem] shadow-2xl max-w-sm w-full overflow-hidden border border-white p-8"
+            >
+              <div className="text-center">
+                <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mb-6 border border-blue-100 shadow-sm mx-auto">
+                  <Mail className="w-8 h-8" />
+                </div>
+                <h3 className="text-2xl font-black text-slate-900 tracking-tight leading-tight mb-2">Join the Pro Waitlist</h3>
+                <p className="text-sm font-medium text-slate-500 mb-8 leading-relaxed">
+                  Help us shape the Pro plan. Join the waitlist for early access pricing and exclusive features.
+                </p>
+
+                {waitlistStatus === 'success' ? (
+                  <div className="bg-emerald-50 text-emerald-700 py-4 rounded-2xl font-bold text-sm flex items-center justify-center">
+                    <CheckCircle2 className="w-5 h-5 mr-2" /> You're on the list!
+                  </div>
+                ) : (
+                  <form onSubmit={joinWaitlist} className="space-y-4">
+                    <input 
+                      type="email"
+                      required
+                      placeholder="Enter your work email"
+                      value={waitlistEmail}
+                      onChange={(e) => setWaitlistEmail(e.target.value)}
+                      className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500/20 focus:outline-none transition-all"
+                    />
+                    <button 
+                      type="submit"
+                      disabled={waitlistStatus === 'loading'}
+                      className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl transition-all shadow-xl shadow-blue-200 disabled:opacity-50"
+                    >
+                      {waitlistStatus === 'loading' ? 'Joining...' : 'Get Early Access'}
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => setWaitlistOpen(false)}
+                      className="w-full text-slate-400 font-bold text-xs hover:text-slate-600 py-2"
+                    >
+                      Maybe later
+                    </button>
+                  </form>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
       {/* Navigation */}
       <nav className="fixed top-0 w-full z-50 bg-white/80 backdrop-blur-md border-b border-slate-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -184,36 +266,67 @@ export default function Landing() {
       </section>
 
       {/* Pricing Section */}
-      <section id="pricing" className="py-24 bg-slate-50">
+      <section id="pricing" className="py-24 bg-slate-50 relative overflow-hidden">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-4xl h-96 bg-blue-100/20 blur-[120px] -z-10" />
         <div className="max-w-7xl mx-auto px-4">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4 tracking-tight">Flexible Plans for Every Budget.</h2>
-            <p className="text-slate-500 font-medium">Scale as you grow. Start for free, upgrade for enterprise features.</p>
+            <h2 className="text-4xl md:text-5xl font-black mb-4 tracking-tight">Simple, Honest <span className="text-blue-600">Pricing.</span></h2>
+            <p className="text-slate-500 font-bold max-w-xl mx-auto italic">Start for free, upgrade when you realize how much time you're saving.</p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
             <PricingCard 
               title="Individual"
-              price="$0"
-              features={["5 Scans / Month", "AI Basic Audit", "CSV Exports", "Community Support"]}
-              buttonText="Get Started"
+              price="₹0"
+              features={[
+                "5 AI Scans / Month", 
+                "Standard Math Audit", 
+                "CSV & JSON Exports", 
+                "7-Day History", 
+                "Community Support"
+              ]}
+              buttonText="Start Scanning"
               cta={() => navigate('/auth')}
             />
             <PricingCard 
               title="Professional"
-              price="$9.99"
+              price="₹500"
               highlight={true}
-              features={["50 Scans / Month", "Advanced Math Audit", "Team Sharing", "Line Item Extraction", "Priority Support"]}
-              buttonText="Upgrade to Pro"
-              cta={() => navigate('/auth')}
+              features={[
+                "Unlimited AI Scans", 
+                "Advanced Math Audit", 
+                "Excel (.xlsx) Export", 
+                "Web Vendor Verification", 
+                "Search Grounding",
+                "Priority AI Processing",
+                "Lifetime History"
+              ]}
+              buttonText="Join Waitlist"
+              cta={() => setWaitlistOpen(true)}
+              subtitle="Pricing not finalized. Join waitlist for early access pricing."
             />
             <PricingCard 
               title="Enterprise"
-              price="Contact Sales"
-              features={["Unlimited Scans", "Deep Vision Processing", "Custom API Access", "SLA Guarantee", "Dedicated Auditor Support"]}
-              buttonText="Contact Sales"
-              cta={() => navigate('/auth')}
+              price="Custom"
+              features={[
+                "Deep Vision Processing", 
+                "Custom Audit Policies", 
+                "ERP Integration", 
+                "Priority Support",
+                "SLA Guarantees"
+              ]}
+              buttonText="Talk to Founder"
+              cta={() => window.location.href = 'mailto:Voidthoughts.official@gmail.com?subject=Enterprise Inquiry: Auditor AI'}
             />
+          </div>
+          
+          <div className="mt-16 text-center">
+            <p className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-4">Trusted for accuracy by</p>
+            <div className="flex flex-wrap justify-center items-center gap-8 opacity-30 grayscale contrast-200">
+               <span className="text-lg font-black tracking-tighter">FINANCE.LLP</span>
+               <span className="text-lg font-black tracking-tighter">CORP_LEDGER</span>
+               <span className="text-lg font-black tracking-tighter">AUDIT_FLOW</span>
+            </div>
           </div>
         </div>
       </section>
@@ -240,15 +353,18 @@ function FeatureCard({ icon, title, description }: any) {
   );
 }
 
-function PricingCard({ title, price, features, highlight, buttonText, cta }: any) {
+function PricingCard({ title, price, features, highlight, buttonText, cta, subtitle }: any) {
   return (
-    <div className={`p-10 rounded-3xl border ${highlight ? 'bg-slate-900 text-white border-slate-900 shadow-2xl shadow-blue-200' : 'bg-white border-slate-100 shadow-sm'} flex flex-col relative overflow-hidden group`}>
+    <div className={`p-8 md:p-10 rounded-3xl border ${highlight ? 'bg-slate-900 text-white border-slate-900 shadow-2xl shadow-blue-200' : 'bg-white border-slate-100 shadow-sm'} flex flex-col relative overflow-hidden group`}>
       {highlight && <div className="absolute top-0 right-0 bg-blue-600 text-[10px] text-white font-bold px-4 py-1.5 uppercase tracking-widest rounded-bl-xl border-b border-l border-blue-400">Best Value</div>}
       <h3 className="text-xl font-bold mb-2 tracking-tight">{title}</h3>
-      <div className="flex items-baseline mb-8">
+      <div className="flex items-baseline mb-2">
         <span className="text-4xl font-black">{price}</span>
-        {price.includes('$') && <span className={`text-sm ${highlight ? 'text-slate-400' : 'text-slate-500'} ml-1 font-bold`}>/mo</span>}
+        {price.startsWith('₹') && (
+          <span className={`text-sm ${highlight ? 'text-slate-400' : 'text-slate-500'} ml-1 font-bold`}>/mo</span>
+        )}
       </div>
+      {subtitle && <p className={`text-[10px] font-bold italic mb-6 ${highlight ? 'text-blue-400' : 'text-slate-400'}`}>{subtitle}</p>}
       <ul className="space-y-4 mb-10 flex-1">
         {features.map((f: any, i: number) => (
           <li key={i} className="flex items-center space-x-3 text-[13px] font-bold">
