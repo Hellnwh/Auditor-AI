@@ -76,6 +76,13 @@ EXTRACTION RULES
 - Categorize items into one of: "Goods", "Services", "Food & Beverage", "Travel", "Utilities", "Professional Fees", "Tax", "Shipping", "Other".
 - All monetary fields (amount, subtotal, tax, discount, total_amount) must be numbers, not strings. Use 0 if a field is absent.
 
+SPREADSHEET INPUT
+- If the input is spreadsheet text (rows of cells), each row in the items section represents one line item.
+- Identify the items section by looking for column headers like "Description", "Item", "Qty", "Amount", or "Total".
+- Extract every data row in that section as a separate item.
+- Ignore header rows, footer rows, instructions, README content, and metadata rows.
+- If multiple sheets are provided, focus on the one that looks like a single invoice (has a vendor name, items, subtotal, total).
+
 VERIFICATION RULES
 - Compute sum_of_items = sum of all items[].amount.
 - Check 1: sum_of_items must equal subtotal (tolerance 0.05).

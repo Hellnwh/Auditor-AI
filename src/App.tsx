@@ -145,9 +145,42 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
       if (isExcel) {
         const buffer = await file.arrayBuffer();
         const workbook = xlsx.read(buffer, { type: "buffer" });
+        
+        let foundData = false;
         for (const sheetName of workbook.SheetNames) {
+          if (sheetName.match(/read\s*me|instruction|guideline|intro/i)) continue;
+          
           const sheet = workbook.Sheets[sheetName];
-          textContent += `\n--- Sheet: ${sheetName} ---\n`;
+          const rows: any[][] = xlsx.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: "" });
+          
+          const nonEmptyRows = rows.filter(row => row.some(cell => cell !== undefined && cell !== null && String(cell).trim() !== ''));
+          
+          if (nonEmptyRows.length > 0) {
+            textContent = `\n--- Sheet: ${sheetName} ---\n`;
+            
+            const maxCols = Math.max(...nonEmptyRows.map(r => r.length));
+            if (maxCols > 0) {
+              nonEmptyRows.forEach((row, i) => {
+                const cells = Array.from({ length: maxCols }).map((_, c) => {
+                  const val = row[c];
+                  return val ? String(val).replace(/\|/g, '\\|').replace(/\n/g, ' ') : '';
+                });
+                textContent += `| ${cells.join(' | ')} |\n`;
+                if (i === 0) {
+                  const separator = Array.from({ length: maxCols }).map(() => '---');
+                  textContent += `| ${separator.join(' | ')} |\n`;
+                }
+              });
+              foundData = true;
+              break; // Limit to one invoice per upload
+            }
+          }
+        }
+        
+        if (!foundData && workbook.SheetNames.length > 0) {
+          const sheetName = workbook.SheetNames[0];
+          const sheet = workbook.Sheets[sheetName];
+          textContent = `\n--- Sheet: ${sheetName} ---\n`;
           textContent += xlsx.utils.sheet_to_csv(sheet);
         }
       } else {
@@ -1042,14 +1075,27 @@ export function DashboardContent({ expenses, authFetch, logout, addToast, update
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {parseLineItems(viewingLineItems.lineItems).map((item: any, idx: number) => (
-                    <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                      <td className="py-3 px-2 font-medium text-slate-900">{item.name || "Unknown Item"}</td>
-                      <td className="py-3 px-2 text-right text-slate-600">{item.quantity || 1}</td>
-                      <td className="py-3 px-2 text-right text-slate-600">{item.unit_price ? formatCurrency(item.unit_price, viewingLineItems.currency) : "-"}</td>
-                      <td className="py-3 px-2 text-right font-bold text-slate-900">{item.total_price ? formatCurrency(item.total_price, viewingLineItems.currency) : "-"}</td>
-                    </tr>
-                  ))}
+                  {parseLineItems(viewingLineItems.lineItems).map((item: any, idx: number) => {
+                    if (!item || typeof item !== 'object') {
+                      return (
+                        <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                          <td colSpan={4} className="py-3 px-2 font-medium text-slate-900">Unknown Item</td>
+                        </tr>
+                      );
+                    }
+                    const itemName = item.description || item.name || item.category;
+                    const p = item.amount !== undefined && item.amount !== null ? item.amount : item.total_price;
+                    const up = item.unit_price;
+                    const q = item.quantity;
+                    return (
+                      <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                        <td className="py-3 px-2 font-medium text-slate-900">{itemName || "Unknown Item"}</td>
+                        <td className="py-3 px-2 text-right text-slate-600">{q !== undefined && q !== null ? q : "-"}</td>
+                        <td className="py-3 px-2 text-right text-slate-600">{up !== undefined && up !== null ? formatCurrency(up, viewingLineItems.currency) : "-"}</td>
+                        <td className="py-3 px-2 text-right font-bold text-slate-900">{p !== undefined && p !== null ? formatCurrency(p, viewingLineItems.currency) : "-"}</td>
+                      </tr>
+                    );
+                  })}
                   {parseLineItems(viewingLineItems.lineItems).length === 0 && (
                      <tr>
                        <td colSpan={4} className="py-6 text-center text-slate-500 text-sm">No specific items could be extracted.</td>
