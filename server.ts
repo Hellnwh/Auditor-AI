@@ -41,7 +41,6 @@ async function sendUserEmail(toEmail: string, subject: string, html: string, uid
 
   if (uid) {
     try {
-      const db = admin.firestore();
       const doc = await db.collection('users').doc(uid).get();
       if (doc.exists && doc.data()?.emailPreferences?.transactional === false) {
         console.log(`User ${uid} opted out of transactional emails. Skipping.`);
@@ -125,6 +124,18 @@ if (!admin.apps.length) {
   }
 }
 
+const FIRESTORE_DATABASE_ID = process.env.FIRESTORE_DATABASE_ID || '(default)';
+const db = admin.firestore();
+if (FIRESTORE_DATABASE_ID !== '(default)') {
+  db.settings({ databaseId: FIRESTORE_DATABASE_ID, ignoreUndefinedProperties: true });
+} else {
+  db.settings({ ignoreUndefinedProperties: true });
+}
+
+console.log(`[startup] Using Firestore database: ${FIRESTORE_DATABASE_ID}`);
+
+export { db };
+
 // Initialize Gemini with the server-side key
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
@@ -145,7 +156,6 @@ async function requireAuth(req: any, res: any, next: any) {
 
 // Production-ready rate limit via Firestore
 async function rateLimit(uid: string, maxPerMinute = 20): Promise<boolean> {
-  const db = admin.firestore();
   const rateLimitRef = db.collection('rate_limits').doc(uid);
   const now = Date.now();
   
@@ -283,7 +293,6 @@ async function startServer() {
     }
 
     try {
-      const db = admin.firestore();
       const timestamp = admin.firestore.FieldValue.serverTimestamp();
       
       await db.collection('feedback').add({
@@ -349,7 +358,6 @@ async function startServer() {
     if (!email) return res.status(400).json({ success: false, error: 'Email is required' });
 
     try {
-      const db = admin.firestore();
       const waitlistRef = db.collection('waitlist');
       
       // Check for duplicate
@@ -429,7 +437,6 @@ async function startServer() {
     }
 
     try {
-      const db = admin.firestore();
       await db.collection('contact_requests').add({
         subject,
         message,
@@ -493,7 +500,6 @@ async function startServer() {
 
   app.post('/api/welcome', requireAuth, async (req: any, res: any) => {
     try {
-      const db = admin.firestore();
       const userRef = db.collection('users').doc(req.uid);
       const doc = await userRef.get();
       const userData = doc.data() || {};
@@ -546,7 +552,6 @@ async function startServer() {
   
   app.post('/api/email-preferences', requireAuth, async (req: any, res: any) => {
     try {
-      const db = admin.firestore();
       const userRef = db.collection('users').doc(req.uid);
       await userRef.set({ emailPreferences: req.body }, { merge: true });
       res.json({ success: true });
@@ -562,7 +567,6 @@ async function startServer() {
     }
   
     // 1. Quota Enforcement
-    const db = admin.firestore();
     const userRef = db.collection('users').doc(req.uid);
     const now = new Date();
     
