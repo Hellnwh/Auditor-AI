@@ -89,6 +89,15 @@ function isRateLimited(ip: string): boolean {
   return false;
 }
 
+let FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID;
+let FIRESTORE_DATABASE_ID = process.env.FIRESTORE_DATABASE_ID || '(default)';
+
+try {
+  const config = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf8'));
+  if (config.firestoreDatabaseId) FIRESTORE_DATABASE_ID = config.firestoreDatabaseId;
+  if (config.projectId) FIREBASE_PROJECT_ID = config.projectId;
+} catch (e) {}
+
 // Initialize Firebase Admin to verify user tokens
 if (!admin.apps.length) {
   const renderSecretPath = '/etc/secrets/serviceAccount.json';
@@ -109,22 +118,13 @@ if (!admin.apps.length) {
     });
   } else {
     // Local dev or GCP-managed runtime
-    let projectId = process.env.FIREBASE_PROJECT_ID;
-    try {
-      const config = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf8'));
-      if (config.projectId) projectId = config.projectId;
-    } catch(e) {}
-    
-    console.log('Firebase Admin initializing with projectId:', projectId);
-
+    console.log('Firebase Admin initializing with projectId:', FIREBASE_PROJECT_ID);
     admin.initializeApp({
       credential: admin.credential.applicationDefault(),
-      ...(projectId && { projectId })
+      ...(FIREBASE_PROJECT_ID && { projectId: FIREBASE_PROJECT_ID })
     });
   }
 }
-
-const FIRESTORE_DATABASE_ID = process.env.FIRESTORE_DATABASE_ID || '(default)';
 const db = admin.firestore();
 if (FIRESTORE_DATABASE_ID !== '(default)') {
   db.settings({ databaseId: FIRESTORE_DATABASE_ID, ignoreUndefinedProperties: true });
@@ -304,6 +304,8 @@ async function startServer() {
         ip
       });
 
+const FIREBASE_PROJECT_ID = process.env.GCLOUD_PROJECT || process.env.FIREBASE_PROJECT_ID || 'gen-lang-client-0898804293';
+
       await sendInternalAlert(
         '📝 New feedback',
         internalEmailHTML({
@@ -313,11 +315,11 @@ async function startServer() {
             'User': email || 'Not provided',
             'UID': userUid || 'Anonymous',
             'Page': page || 'N/A',
-            'Submitted': new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
+            'Submitted': new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }),
           },
           message: message,
           actionLabel: 'Open in Firestore',
-          actionUrl: `https://console.firebase.google.com/project/${process.env.FIREBASE_PROJECT_ID || '_'}/firestore/databases/(default)/data/~2Ffeedback`
+          actionUrl: `https://console.firebase.google.com/project/${FIREBASE_PROJECT_ID}/firestore/databases/${encodeURIComponent(FIRESTORE_DATABASE_ID)}/data/~2Ffeedback`
         })
       );
 
@@ -375,6 +377,8 @@ async function startServer() {
 
       const totalCount = (await waitlistRef.count().get()).data().count;
 
+const APP_BASE_URL = process.env.APP_BASE_URL || 'https://auditor-ai-020l.onrender.com';
+
       await sendInternalAlert(
         '🎉 New PRO waitlist signup',
         internalEmailHTML({
@@ -384,7 +388,7 @@ async function startServer() {
             'Email': email,
             'Plan Interest': plan || 'Not specified',
             'Total Waitlist Count': String(totalCount),
-            'Timestamp': new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
+            'Timestamp': new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })
           }
         })
       );
@@ -399,7 +403,7 @@ async function startServer() {
             "In the meantime, your free account is good for 5 receipts per month — keep using it."
           ],
           ctaLabel: 'Open Auditor AI',
-          ctaUrl: process.env.FRONTEND_ORIGIN || 'https://auditor.ai/dashboard'
+          ctaUrl: `${APP_BASE_URL}/`
         })
       );
 
@@ -473,7 +477,7 @@ async function startServer() {
             'User Email': email || 'Not provided',
             'User UID': userUid || 'Anonymous',
             'Action Required': countdownStr || 'Reply to user email',
-            'Timestamp': new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
+            'Timestamp': new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })
           },
           message
         })
@@ -508,9 +512,12 @@ async function startServer() {
         return res.json({ success: true, message: 'Already sent' });
       }
 
-      const email = req.body.email || (await admin.auth().getUser(req.uid)).email || 'unknown';
-      const name = (email || 'there').split('@')[0];
+      const authUser = await admin.auth().getUser(req.uid);
+      const email = req.body.email || authUser.email || 'unknown';
+      const name = authUser.displayName || (authUser.email ? authUser.email.split('@')[0] : 'there');
       
+      const APP_BASE_URL = process.env.APP_BASE_URL || 'https://auditor-ai-020l.onrender.com';
+
       await sendInternalAlert(
         '🆕 New signup',
         internalEmailHTML({
@@ -519,7 +526,7 @@ async function startServer() {
           data: {
             'Email': email,
             'UID': req.uid,
-            'Timestamp': new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
+            'Timestamp': new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })
           }
         })
       );
@@ -537,7 +544,7 @@ async function startServer() {
             "3. Get an instant math check to catch errors"
           ],
           ctaLabel: "Upload your first receipt →",
-          ctaUrl: process.env.FRONTEND_ORIGIN || "https://auditor.ai/dashboard"
+          ctaUrl: `${APP_BASE_URL}/`
         }),
         req.uid
       );

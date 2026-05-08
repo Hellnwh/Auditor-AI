@@ -1,13 +1,15 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { ArrowLeft, Shield, FileText, CheckCircle2 } from 'lucide-react';
 import Footer from '../components/Footer';
+import ContactDialog from '../components/ContactDialog';
 
 export default function Legal() {
   const navigate = useNavigate();
   const location = useLocation();
   const isPrivacy = location.pathname === '/privacy';
+  const [contactOpen, setContactOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -43,7 +45,7 @@ export default function Legal() {
             {isPrivacy ? (
                 <div className="space-y-6 text-slate-600 leading-relaxed font-medium">
                   <p>Last updated: May 2026</p>
-                  <p>Auditor AI is currently operated by <strong>[YOUR NAME]</strong> ("the Operator"). This policy explains our commitment to your data during this preview/beta phase.</p>
+                  <p>Auditor AI is currently operated by VOID AI ("the Operator"). This policy explains our commitment to your data during this preview/beta phase.</p>
                   
                   <section>
                     <h2 className="text-xl font-bold text-slate-900 mb-3">1. Data Handling</h2>
@@ -62,14 +64,14 @@ export default function Legal() {
                   
                   <section>
                     <h2 className="text-xl font-bold text-slate-900 mb-3">4. Contact & Deletion</h2>
-                    <p>For data deletion requests or privacy inquiries, please contact <strong>[YOUR EMAIL]</strong>. We will process all requests within 30 days.</p>
+                    <p>For data deletion requests or privacy inquiries, please <button onClick={() => setContactOpen(true)} className="text-blue-600 hover:underline font-bold">contact us</button>. We will process all requests within 30 days.</p>
                   </section>
                 </div>
               ) : (
                 <div className="space-y-6 text-slate-600 leading-relaxed font-medium">
                   <section>
                     <h2 className="text-xl font-bold text-slate-900 mb-3">1. Terms of Use</h2>
-                    <p>Auditor AI is provided "as is" without warranties of any kind. By using this service, you agree that the Operator ([YOUR NAME]) is not liable for any financial inaccuracies or audit failures resulting from the use of this tool.</p>
+                    <p>Auditor AI is provided "as is" without warranties of any kind. By using this service, you agree that the Operator - VOID AI is not liable for any financial inaccuracies or audit failures resulting from the use of this tool.</p>
                   </section>
                   <section>
                     <h2 className="text-xl font-bold text-slate-900 mb-3">2. beta Status</h2>
@@ -95,6 +97,7 @@ export default function Legal() {
       <div className="p-8">
         <Footer />
       </div>
+      <ContactDialog isOpen={contactOpen} onClose={() => setContactOpen(false)} reason="delete_account" />
     </div>
   );
 }
