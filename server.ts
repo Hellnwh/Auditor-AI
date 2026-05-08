@@ -4,6 +4,91 @@ import path from "path";
 import { GoogleGenAI, Type } from '@google/genai';
 import admin from 'firebase-admin';
 import fs from 'fs';
+import { Resend } from 'resend';
+import { internalEmailHTML, userEmailHTML } from './emails';
+
+// Initialize Resend
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+const NOTIFICATION_EMAIL = process.env.NOTIFICATION_EMAIL || '';
+const EMAIL_TEST_MODE = process.env.EMAIL_TEST_MODE === 'true';
+
+async function sendInternalAlert(subject: string, html: string): Promise<void> {
+  if (!resend || !NOTIFICATION_EMAIL) {
+    console.warn('Email notifications not configured - skipping internal alert');
+    return;
+  }
+  
+  const finalSubject = EMAIL_TEST_MODE ? `[TEST] ${subject}` : subject;
+  
+  try {
+    const { error } = await resend.emails.send({
+      from: 'Auditor AI <onboarding@resend.dev>',
+      to: NOTIFICATION_EMAIL,
+      subject: finalSubject,
+      html,
+    });
+    if (error) console.error('Resend internal alert error:', error);
+  } catch (err) {
+    console.error('Failed to send internal alert:', err);
+  }
+}
+
+async function sendUserEmail(toEmail: string, subject: string, html: string, uid?: string | null): Promise<void> {
+  if (!resend) {
+    console.warn('Email notifications not configured - skipping user email');
+    return;
+  }
+
+  if (uid) {
+    try {
+      const db = admin.firestore();
+      const doc = await db.collection('users').doc(uid).get();
+      if (doc.exists && doc.data()?.emailPreferences?.transactional === false) {
+        console.log(`User ${uid} opted out of transactional emails. Skipping.`);
+        return;
+      }
+    } catch (e) {
+      console.warn('Failed to check user email preferences, sending anyway', e);
+    }
+  }
+  
+  let finalTo = toEmail;
+  let finalSubject = subject;
+  if (EMAIL_TEST_MODE) {
+    finalTo = NOTIFICATION_EMAIL;
+    finalSubject = `[TEST -> ${toEmail}] ${subject}`;
+  }
+  
+  try {
+    const { error } = await resend.emails.send({
+      from: 'Auditor AI <onboarding@resend.dev>',
+      to: finalTo,
+      subject: finalSubject,
+      html,
+    });
+    if (error) console.error('Resend user email error:', error);
+  } catch (err) {
+    console.error('Failed to send user email:', err);
+  }
+}
+
+// In-memory rate limit for public endpoints
+const publicRateLimits = new Map<string, { count: number, resetAt: number }>();
+
+function isRateLimited(ip: string): boolean {
+  const now = Date.now();
+  const limit = publicRateLimits.get(ip);
+  
+  if (!limit || now > limit.resetAt) {
+    publicRateLimits.set(ip, { count: 1, resetAt: now + 3600000 }); // 1 hour
+    return false;
+  }
+  
+  if (limit.count >= 5) return true;
+  
+  limit.count++;
+  return false;
+}
 
 // Initialize Firebase Admin to verify user tokens
 if (!admin.apps.length) {
@@ -169,6 +254,305 @@ async function startServer() {
   // API routes (keeping health check or other routes if any)
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
+  });
+
+  app.post('/api/feedback', async (req: any, res) => {
+    const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+    if (isRateLimited(ip)) {
+      return res.status(429).json({ success: false, error: 'Too many submissions. Please try again in an hour.' });
+    }
+
+    const { message, email, page, website } = req.body;
+    
+    // Honeypot check
+    if (website) {
+      return res.json({ success: true });
+    }
+
+    if (!message) return res.status(400).json({ success: false, error: 'Message is required' });
+
+    // Optional auth check
+    const header = req.headers.authorization || '';
+    const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+    let userUid = null;
+    if (token) {
+      try {
+        const decoded = await admin.auth().verifyIdToken(token);
+        userUid = decoded.uid;
+      } catch (e) {}
+    }
+
+    try {
+      const db = admin.firestore();
+      const timestamp = admin.firestore.FieldValue.serverTimestamp();
+      
+      await db.collection('feedback').add({
+        message,
+        email: email || null,
+        page: page || null,
+        userUid,
+        timestamp,
+        ip
+      });
+
+      await sendInternalAlert(
+        '📝 New feedback',
+        internalEmailHTML({
+          title: '📝 New feedback',
+          intro: `Feedback received from ${email || 'Anonymous'}`,
+          data: {
+            'User': email || 'Not provided',
+            'UID': userUid || 'Anonymous',
+            'Page': page || 'N/A',
+            'Submitted': new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
+          },
+          message: message,
+          actionLabel: 'Open in Firestore',
+          actionUrl: `https://console.firebase.google.com/project/${process.env.FIREBASE_PROJECT_ID || '_'}/firestore/databases/(default)/data/~2Ffeedback`
+        })
+      );
+
+      if (email) {
+        await sendUserEmail(
+          email,
+          'Thanks for your feedback — we hear you',
+          userEmailHTML({
+            greeting: 'Thanks for your feedback',
+            bodyParagraphs: [
+              "Got your feedback. I read every message personally and will get back to you within 2 business days if it needs a reply.",
+              "Keep the feedback coming — it's how this product gets better."
+            ]
+          }),
+          userUid
+        );
+      }
+
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error('Feedback submission error:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post('/api/waitlist', async (req, res) => {
+    const ip = (req.ip || req.headers['x-forwarded-for'] || 'unknown').toString();
+    if (isRateLimited(ip)) {
+      return res.status(429).json({ success: false, error: 'Too many submissions. Please try again in an hour.' });
+    }
+
+    const { email, plan, website } = req.body;
+    
+    if (website) {
+      return res.json({ success: true });
+    }
+
+    if (!email) return res.status(400).json({ success: false, error: 'Email is required' });
+
+    try {
+      const db = admin.firestore();
+      const waitlistRef = db.collection('waitlist');
+      
+      // Check for duplicate
+      const existing = await waitlistRef.where('email', '==', email).limit(1).get();
+      if (!existing.empty) {
+        return res.json({ success: true, message: 'Already on waitlist' });
+      }
+
+      await waitlistRef.add({
+        email,
+        plan: plan || 'FREE',
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        ip
+      });
+
+      const totalCount = (await waitlistRef.count().get()).data().count;
+
+      await sendInternalAlert(
+        '🎉 New PRO waitlist signup',
+        internalEmailHTML({
+          title: '🎉 New PRO waitlist signup',
+          intro: `User joined the waitlist for ${plan || 'PRO'}`,
+          data: {
+            'Email': email,
+            'Plan Interest': plan || 'Not specified',
+            'Total Waitlist Count': String(totalCount),
+            'Timestamp': new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
+          }
+        })
+      );
+
+      await sendUserEmail(
+        email,
+        "You're on the waitlist for Auditor AI Pro",
+        userEmailHTML({
+          greeting: "You're on the waitlist",
+          bodyParagraphs: [
+            "You're in early. We'll email you the moment Pro launches with founding-member pricing locked in.",
+            "In the meantime, your free account is good for 5 receipts per month — keep using it."
+          ],
+          ctaLabel: 'Open Auditor AI',
+          ctaUrl: process.env.FRONTEND_ORIGIN || 'https://auditor.ai/dashboard'
+        })
+      );
+
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error('Waitlist submission error:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post('/api/contact', async (req: any, res) => {
+    const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+    if (isRateLimited(ip)) {
+      return res.status(429).json({ success: false, error: 'Too many submissions. Please try again in an hour.' });
+    }
+
+    const { subject, message, reason, email, website } = req.body;
+    
+    if (website) {
+      return res.json({ success: true });
+    }
+
+    if (!subject || !message || !reason) {
+      return res.status(400).json({ success: false, error: 'Missing required fields' });
+    }
+
+    const header = req.headers.authorization || '';
+    const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+    let userUid = null;
+    if (token) {
+      try {
+        const decoded = await admin.auth().verifyIdToken(token);
+        userUid = decoded.uid;
+      } catch (e) {}
+    }
+
+    try {
+      const db = admin.firestore();
+      await db.collection('contact_requests').add({
+        subject,
+        message,
+        reason,
+        email: email || null,
+        userUid,
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        ip
+      });
+
+      let emoji = '❓';
+      let userSubject = 'We got your message';
+      let userBody = `Got your message about: ${subject}. I'll reply within 2 business days from this email — you can just reply to this thread.`;
+      
+      if (reason === 'delete_account') {
+        emoji = '🗑️';
+        userSubject = 'Your deletion request was received';
+        userBody = "Got it. Your account and all associated data will be permanently deleted within 30 days, as committed in our Privacy Policy. You'll get a confirmation email once it's done. If you change your mind, just reply to this email within the next few days.";
+      } else if (reason === 'enterprise') {
+        emoji = '💼';
+        userSubject = "We'll be in touch about Enterprise";
+        userBody = "Got your enterprise inquiry. I'll personally reply within 1 business day to set up a 30-min call to understand your needs.";
+      }
+
+      const countdownStr = reason === 'delete_account' ? ' (Process within 30 days)' : '';
+
+      await sendInternalAlert(
+        `${emoji} Contact request: ${reason}`,
+        internalEmailHTML({
+          title: `${emoji} Contact request: ${reason}`,
+          intro: `User submitted a contact form for ${reason}`,
+          data: {
+            'Subject': subject,
+            'User Email': email || 'Not provided',
+            'User UID': userUid || 'Anonymous',
+            'Action Required': countdownStr || 'Reply to user email',
+            'Timestamp': new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
+          },
+          message
+        })
+      );
+
+      if (email) {
+        await sendUserEmail(
+          email,
+          userSubject,
+          userEmailHTML({
+            greeting: 'Hi there,',
+            bodyParagraphs: [userBody]
+          }),
+          userUid
+        );
+      }
+
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error('Contact submission error:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post('/api/welcome', requireAuth, async (req: any, res: any) => {
+    try {
+      const db = admin.firestore();
+      const userRef = db.collection('users').doc(req.uid);
+      const doc = await userRef.get();
+      const userData = doc.data() || {};
+      
+      if (userData.welcomeEmailSent) {
+        return res.json({ success: true, message: 'Already sent' });
+      }
+
+      const email = req.body.email || (await admin.auth().getUser(req.uid)).email || 'unknown';
+      const name = (email || 'there').split('@')[0];
+      
+      await sendInternalAlert(
+        '🆕 New signup',
+        internalEmailHTML({
+          title: '🆕 New signup',
+          intro: 'New user joined Auditor AI',
+          data: {
+            'Email': email,
+            'UID': req.uid,
+            'Timestamp': new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
+          }
+        })
+      );
+
+      await sendUserEmail(
+        email,
+        'Welcome to Auditor AI 👋',
+        userEmailHTML({
+          greeting: `Hi ${name},`,
+          bodyParagraphs: [
+            "You're in. Your free account gives you 5 receipt audits per month — enough to try it out on your real workflow.",
+            "Here's how to get started:",
+            "1. Upload a receipt (image, PDF, or Excel)",
+            "2. Watch the AI extract every line item in seconds",
+            "3. Get an instant math check to catch errors"
+          ],
+          ctaLabel: "Upload your first receipt →",
+          ctaUrl: process.env.FRONTEND_ORIGIN || "https://auditor.ai/dashboard"
+        }),
+        req.uid
+      );
+
+      await userRef.set({ welcomeEmailSent: true }, { merge: true });
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error('Welcome email error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+  
+  app.post('/api/email-preferences', requireAuth, async (req: any, res: any) => {
+    try {
+      const db = admin.firestore();
+      const userRef = db.collection('users').doc(req.uid);
+      await userRef.set({ emailPreferences: req.body }, { merge: true });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   app.post('/api/audit', requireAuth, async (req: any, res) => {

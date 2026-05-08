@@ -4,6 +4,7 @@ import { ShieldCheck, User, Mail, CreditCard, ArrowLeft, Home, BarChart2, FileTe
 import { Link, useNavigate } from 'react-router-dom';
 import Footer from '../components/Footer';
 import { Sidebar, MobileNav } from '../components/Navigation';
+import ContactDialog from '../components/ContactDialog';
 
 export default function Settings({ user, logout, refreshUser, addToast }: { user: any; logout: () => void, refreshUser: () => void, addToast: any }) {
   const navigate = useNavigate();
@@ -17,7 +18,11 @@ export default function Settings({ user, logout, refreshUser, addToast }: { user
   });
   const [saving, setSaving] = useState(false);
   
-  // Account Deletion State
+  // Contact States
+  const [contactOpen, setContactOpen] = useState(false);
+  const [contactReason, setContactReason] = useState<'enterprise' | 'delete_account'>('enterprise');
+  
+  // Account Deletion State (keeping it for the dialog if needed, but will use ContactDialog)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -261,6 +266,35 @@ export default function Settings({ user, logout, refreshUser, addToast }: { user
                              TEL: {user.phoneNumber}
                           </div>
                         )}
+                        <div className="mt-4 p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                            <div className="flex items-center space-x-2">
+                               <Mail className="w-4 h-4 text-slate-400" />
+                               <div>
+                                  <label className="text-[10px] font-black text-slate-700 uppercase tracking-widest block">Email Receipts</label>
+                                  <span className="text-[9px] font-bold text-slate-400">Receive transactional emails</span>
+                               </div>
+                            </div>
+                            <button 
+                               onClick={async () => {
+                                 const currentPref = user?.emailPreferences?.transactional ?? true;
+                                 const newPref = !currentPref;
+                                 try {
+                                   const token = await (await import('../lib/firebase')).auth.currentUser?.getIdToken();
+                                   await fetch('/api/email-preferences', {
+                                     method: 'POST',
+                                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                     body: JSON.stringify({ transactional: newPref })
+                                   });
+                                   refreshUser();
+                                 } catch (e) {
+                                   addToast('Failed to update preferences', 'error');
+                                 }
+                               }}
+                               className={`w-10 h-5 rounded-full p-0.5 transition-colors duration-200 ease-in-out ${user?.emailPreferences?.transactional !== false ? 'bg-blue-600' : 'bg-slate-300'}`}
+                            >
+                               <div className={`w-4 h-4 bg-white rounded-full shadow-sm transform transition-transform duration-200 ease-in-out ${user?.emailPreferences?.transactional !== false ? 'translate-x-5' : 'translate-x-0'}`} />
+                            </button>
+                        </div>
                         <button onClick={logout} className="w-full py-3 bg-red-50 text-red-600 rounded-xl text-xs font-bold hover:bg-red-100 transition-all mt-4">Sign Out</button>
                       </div>
                    )}
@@ -358,7 +392,8 @@ export default function Settings({ user, logout, refreshUser, addToast }: { user
                                   if (el) el.scrollIntoView({ behavior: 'smooth' });
                                 }, 100);
                               } else {
-                                window.location.href = 'mailto:[YOUR EMAIL]?subject=Enterprise inquiry';
+                                setContactReason('enterprise');
+                                setContactOpen(true);
                               }
                             }}
                             className="w-full py-3 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-all active:scale-[0.98] shadow-lg shadow-slate-200"
@@ -376,6 +411,14 @@ export default function Settings({ user, logout, refreshUser, addToast }: { user
         </div>
       </main>
 
+      <ContactDialog 
+        isOpen={contactOpen} 
+        onClose={() => setContactOpen(false)} 
+        reason={contactReason}
+        initialSubject={contactReason === 'delete_account' ? 'Account Deletion Request' : 'Enterprise Inquiry'}
+        initialMessage={contactReason === 'delete_account' ? 'I would like to request a permanent deletion of my account and all associated data.' : ''}
+      />
+
       {/* Delete Confirmation Dialog */}
       {deleteConfirmOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
@@ -390,23 +433,25 @@ export default function Settings({ user, logout, refreshUser, addToast }: { user
               </div>
               <h3 className="text-lg font-black text-slate-900 tracking-tight leading-tight mb-2">Delete Auditor Account?</h3>
               <p className="text-sm font-medium text-slate-500 mb-6">
-                This action is permanent and cannot be undone. All your expenses, tracking reports, and account settings will be erased from our database.
+                For security reasons, account deletion requests are processed manually within 48 hours. This ensures no data is lost during your transition.
               </p>
               
               <div className="flex gap-3">
                 <button 
-                  disabled={deleting}
                   onClick={() => setDeleteConfirmOpen(false)}
-                  className="flex-1 px-4 py-2 bg-slate-50 text-slate-600 hover:bg-slate-100 font-bold text-sm rounded-xl transition-all disabled:opacity-50"
+                  className="flex-1 px-4 py-2 bg-slate-50 text-slate-600 hover:bg-slate-100 font-bold text-sm rounded-xl transition-all"
                 >
                   Cancel
                 </button>
                 <button 
-                  disabled={deleting}
-                  onClick={confirmDeleteAccount}
-                  className="flex-1 px-4 py-2 bg-red-600 text-white hover:bg-red-700 font-bold text-sm rounded-xl transition-all shadow-lg shadow-red-200 disabled:opacity-50 flex justify-center items-center"
+                  onClick={() => {
+                    setDeleteConfirmOpen(false);
+                    setContactReason('delete_account');
+                    setContactOpen(true);
+                  }}
+                  className="flex-1 px-4 py-2 bg-red-600 text-white hover:bg-red-700 font-bold text-sm rounded-xl transition-all shadow-lg shadow-red-200 flex justify-center items-center"
                 >
-                  {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Yes, Delete'}
+                  Request Deletion
                 </button>
               </div>
             </div>

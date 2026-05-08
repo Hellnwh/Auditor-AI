@@ -151,21 +151,19 @@ service cloud.firestore {
       allow delete: if isOwner(userId) && existing().status != 'Reimbursed';
     }
 
-    // FEEDBACK: Public submission
-    match /feedback/{feedbackId} {
-      allow create: if isSignedIn() 
-        && isValidId(feedbackId)
-        && isValidFeedback(incoming())
-        && (incoming().userId == request.auth.uid || !('userId' in incoming()));
+    // FEEDBACK: Only backend access
+    match /feedback/{doc} {
+      allow read, write: if false; 
     }
 
-    // WAITLIST: Market signal collection
-    match /waitlist/{entryId} {
-      allow create: if incoming().email is string 
-        && incoming().email.size() > 0 
-        && incoming().email.size() <= 200
-        && incoming().createdAt == request.time;
-      allow read: if false;
+    // WAITLIST: Only backend access
+    match /waitlist/{doc} {
+      allow read, write: if false;
+    }
+
+    // CONTACT REQUESTS: Only backend access
+    match /contact_requests/{doc} {
+      allow read, write: if false;
     }
   }
 }

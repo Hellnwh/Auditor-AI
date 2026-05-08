@@ -5,6 +5,7 @@ import { FileSearch, Zap, ShieldCheck, PieChart, Users, Receipt, ArrowRight, Che
 import Footer from '../components/Footer';
 import HeroVisual from '../components/HeroVisual';
 import LegalBanner from '../components/LegalBanner';
+import ContactDialog from '../components/ContactDialog';
 
 export default function Landing() {
   const navigate = useNavigate();
@@ -12,6 +13,8 @@ export default function Landing() {
   const [waitlistEmail, setWaitlistEmail] = useState('');
   const [waitlistOpen, setWaitlistOpen] = useState(false);
   const [waitlistStatus, setWaitlistStatus] = useState<'idle' | 'loading' | 'success'>('idle');
+  const [contactOpen, setContactOpen] = useState(false);
+  const [contactReason, setContactReason] = useState<'enterprise' | 'general'>('general');
 
   const joinWaitlist = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,23 +22,32 @@ export default function Landing() {
     setWaitlistStatus('loading');
     
     try {
-      const { collection, addDoc, serverTimestamp } = await import('firebase/firestore');
-      const { db } = await import('../lib/firebase');
-      await addDoc(collection(db, 'waitlist'), {
-        email: waitlistEmail,
-        createdAt: serverTimestamp(),
-        source: 'landing_pricing'
+      const response = await fetch('/api/waitlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: waitlistEmail,
+          plan: 'pro',
+          website: (e.target as any).website.value
+        })
       });
-      setWaitlistStatus('success');
-      setTimeout(() => {
-        setWaitlistOpen(false);
+
+      const result = await response.json();
+      if (result.success) {
+        setWaitlistStatus('success');
+        setTimeout(() => {
+          setWaitlistOpen(false);
+          setWaitlistStatus('idle');
+          setWaitlistEmail('');
+        }, 2000);
+      } else {
         setWaitlistStatus('idle');
-        setWaitlistEmail('');
-      }, 2000);
+        alert(result.error || 'Something went wrong. Please try again.');
+      }
     } catch (err) {
       console.error('Waitlist error:', err);
       setWaitlistStatus('idle');
-      alert('Something went wrong. Please try again.');
+      alert('Something went wrong. Please try again or email us.');
     }
   };
 
@@ -72,6 +84,14 @@ export default function Landing() {
                       value={waitlistEmail}
                       onChange={(e) => setWaitlistEmail(e.target.value)}
                       className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-blue-500/20 focus:outline-none transition-all"
+                    />
+                    <input
+                      type="text"
+                      name="website"
+                      tabIndex={-1}
+                      autoComplete="off"
+                      style={{ position: 'absolute', left: '-9999px' }}
+                      aria-hidden="true"
                     />
                     <button 
                       type="submit"
@@ -328,7 +348,10 @@ export default function Landing() {
                 "SLA Guarantees"
               ]}
               buttonText="Talk to Founder"
-              cta={() => window.location.href = 'mailto:[YOUR EMAIL]?subject=Enterprise Inquiry: Auditor AI'}
+              cta={() => {
+                setContactReason('enterprise');
+                setContactOpen(true);
+              }}
             />
           </div>
         </div>
@@ -340,6 +363,13 @@ export default function Landing() {
             <Footer />
          </div>
       </div>
+
+      <ContactDialog 
+        isOpen={contactOpen} 
+        onClose={() => setContactOpen(false)} 
+        reason={contactReason}
+        initialSubject={contactReason === 'enterprise' ? 'Enterprise Inquiry' : 'Contact Support'}
+      />
     </div>
   );
 }

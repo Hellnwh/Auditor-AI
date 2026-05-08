@@ -1929,6 +1929,14 @@ export default function App() {
     const unsub = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser) {
         const uToken = await fbUser.getIdToken();
+        
+        // Trigger welcome email check asynchronously
+        fetch('/api/welcome', {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${uToken}` },
+           body: JSON.stringify({ email: fbUser.email })
+        }).catch(err => console.error('Failed to trigger welcome email check:', err));
+
         const docRef = doc(db, 'users', fbUser.uid);
         const docSnap = await getDoc(docRef);
         

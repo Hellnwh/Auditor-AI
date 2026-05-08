@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { Shield, FileText, MessageSquare } from 'lucide-react';
+import { Shield, FileText, MessageSquare, Mail } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import FeedbackDialog from './FeedbackDialog';
+import ContactDialog from './ContactDialog';
 
 export default function Footer() {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [contactOpen, setContactOpen] = useState(false);
 
   return (
     <div className="flex flex-col items-start space-y-4 py-8">
@@ -23,6 +25,13 @@ export default function Footer() {
         <MessageSquare className="w-3.5 h-3.5 mr-3" />
         Feedback
       </button>
+      <button 
+        onClick={() => setContactOpen(true)}
+        className="flex items-center text-[10px] font-bold text-slate-400 hover:text-blue-600 transition-colors uppercase tracking-[0.2em]"
+      >
+        <Mail className="w-3.5 h-3.5 mr-3" />
+        Contact Support
+      </button>
 
       <div className="text-[10px] font-bold text-slate-300 uppercase tracking-[0.2em] leading-relaxed max-w-[200px]">
         &copy; {new Date().getFullYear()} Auditor AI. <br />
@@ -30,6 +39,7 @@ export default function Footer() {
       </div>
 
       <FeedbackDialog isOpen={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
+      <ContactDialog isOpen={contactOpen} onClose={() => setContactOpen(false)} reason="general" />
     </div>
   );
 }
