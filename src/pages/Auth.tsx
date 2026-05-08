@@ -5,6 +5,7 @@ import { Loader2, ArrowLeft, ShieldCheck, Zap, Mail } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import Footer from '../components/Footer';
 import { signInWithGoogle } from '../lib/firebase';
+import LegalBanner from '../components/LegalBanner';
 
 export default function Auth({ setToken, setUser }: { setToken: (t: string) => void, setUser: (u: any) => void }) {
   const [isLogin, setIsLogin] = useState(true);

@@ -4,6 +4,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { FileSearch, Zap, ShieldCheck, PieChart, Users, Receipt, ArrowRight, CheckCircle2, Star, Menu, X, Mail, Sparkles } from 'lucide-react';
 import Footer from '../components/Footer';
 import HeroVisual from '../components/HeroVisual';
+import LegalBanner from '../components/LegalBanner';
 
 export default function Landing() {
   const navigate = useNavigate();
